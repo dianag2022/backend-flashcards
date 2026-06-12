@@ -2,6 +2,7 @@ import { Application } from 'express';
 import swaggerUi from 'swagger-ui-express';
 
 const port = process.env.PORT || '4000';
+const baseUrl = process.env.RENDER_EXTERNAL_URL ?? `http://localhost:${port}`;
 
 export const swaggerSpec = {
   openapi: '3.0.3',
@@ -39,8 +40,8 @@ Use \`POST /api/auth/sign-out\` with a Bearer token to revoke refresh tokens ser
   },
   servers: [
     {
-      url: `http://localhost:${port}`,
-      description: 'Local development',
+      url: baseUrl,
+      description: process.env.RENDER_EXTERNAL_URL ? 'Production (Render)' : 'Local development',
     },
   ],
   tags: [
@@ -591,7 +592,18 @@ export function setupSwagger(app: Application): void {
     res.json(swaggerSpec);
   });
 
-  app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
-    customSiteTitle: 'Psychology Flashcards API',
-  }));
+  app.get('/api/docs', (_req, res) => {
+    res.redirect(301, '/api/docs/');
+  });
+
+  app.use(
+    '/api/docs',
+    ...swaggerUi.serve,
+    swaggerUi.setup(swaggerSpec, {
+      customSiteTitle: 'Psychology Flashcards API',
+      swaggerOptions: {
+        url: '/api/docs.json',
+      },
+    })
+  );
 }
