@@ -10,7 +10,12 @@
     "typecheck": "tsc --noEmit",
     "set-admin-role": "tsx src/scripts/setAdminRole.ts"
   },
-  "keywords": ["flashcards", "psychology", "express", "firebase"],
+  "keywords": [
+    "flashcards",
+    "psychology",
+    "express",
+    "firebase"
+  ],
   "author": "",
   "license": "ISC",
   "dependencies": {
@@ -18,13 +23,15 @@
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "firebase-admin": "^14.0.0",
-    "jsonwebtoken": "^9.0.3"
+    "jsonwebtoken": "^9.0.3",
+    "swagger-ui-express": "^5.0.1"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^25.0.3",
+    "@types/swagger-ui-express": "^4.1.8",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3"
   }

@@ -1,0 +1,597 @@
+import { Application } from 'express';
+import swaggerUi from 'swagger-ui-express';
+
+const port = process.env.PORT || '4000';
+
+export const swaggerSpec = {
+  openapi: '3.0.3',
+  info: {
+    title: 'Psychology Flashcards API',
+    version: '1.0.0',
+    description: `
+REST API for the Psychology Flashcards digital ecosystem (Phase 2 — Backend & Infrastructure).
+
+## Authentication
+
+Protected routes use **Firebase ID Tokens** sent in the \`Authorization\` header:
+
+\`\`\`
+Authorization: Bearer <firebase-id-token>
+\`\`\`
+
+The backend verifies tokens with Firebase Admin SDK (\`auth.verifyIdToken\`). Role-based access uses a custom claim \`role\`:
+
+| Role | Access |
+|------|--------|
+| \`admin\` | Web admin panel — create decks/flashcards, publish content |
+| \`end-user\` | Mobile app — read published content (when auth is enabled on public routes) |
+
+Assign admin role for testing: \`npm run set-admin-role -- <firebase-uid>\`
+
+After assigning claims, the user must **sign out and sign in again** to refresh the ID token.
+
+## Sign in / Sign out
+
+Use \`POST /api/auth/sign-up\` to register a new end-user account.
+Use \`POST /api/auth/sign-in\` with email and password to obtain Firebase tokens from the backend.
+Use \`POST /api/auth/sign-out\` with a Bearer token to revoke refresh tokens server-side.
+    `.trim(),
+  },
+  servers: [
+    {
+      url: `http://localhost:${port}`,
+      description: 'Local development',
+    },
+  ],
+  tags: [
+    { name: 'Health', description: 'Service health checks' },
+    { name: 'Auth', description: 'Firebase authentication — sign in and sign out' },
+    { name: 'Public', description: 'Read-only endpoints for mobile / public clients' },
+    { name: 'Admin', description: 'Write operations — requires admin role' },
+  ],
+  components: {
+    securitySchemes: {
+      bearerAuth: {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'JWT',
+        description: 'Firebase ID Token obtained after client sign-in',
+      },
+    },
+    schemas: {
+      ContentStatus: {
+        type: 'string',
+        enum: ['draft', 'published'],
+      },
+      Deck: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', example: 'abc123' },
+          title: { type: 'string', example: 'Cognitive Psychology' },
+          description: { type: 'string', example: 'Core concepts and definitions' },
+          status: { $ref: '#/components/schemas/ContentStatus' },
+          cardCount: { type: 'integer', example: 12 },
+          updatedAt: { type: 'string', format: 'date-time' },
+        },
+        required: ['id', 'title', 'description', 'status', 'cardCount', 'updatedAt'],
+      },
+      Flashcard: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', example: 'card456' },
+          deckId: { type: 'string', example: 'abc123' },
+          front: { type: 'string', example: 'What is working memory?' },
+          back: { type: 'string', example: 'A limited-capacity system for temporary information storage.' },
+          status: { $ref: '#/components/schemas/ContentStatus' },
+          createdAt: { type: 'string', format: 'date-time' },
+        },
+        required: ['id', 'deckId', 'front', 'back', 'status', 'createdAt'],
+      },
+      CreateDeckBody: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', example: 'Cognitive Psychology' },
+          description: { type: 'string', example: 'Core concepts and definitions' },
+        },
+        required: ['title', 'description'],
+      },
+      CreateFlashcardBody: {
+        type: 'object',
+        properties: {
+          deckId: { type: 'string', example: 'abc123' },
+          front: { type: 'string', example: 'What is working memory?' },
+          back: { type: 'string', example: 'A limited-capacity system for temporary information storage.' },
+        },
+        required: ['deckId', 'front', 'back'],
+      },
+      DeckListResponse: {
+        type: 'object',
+        properties: {
+          decks: {
+            type: 'array',
+            items: { $ref: '#/components/schemas/Deck' },
+          },
+        },
+      },
+      DeckResponse: {
+        type: 'object',
+        properties: {
+          deck: { $ref: '#/components/schemas/Deck' },
+        },
+      },
+      FlashcardListResponse: {
+        type: 'object',
+        properties: {
+          flashcards: {
+            type: 'array',
+            items: { $ref: '#/components/schemas/Flashcard' },
+          },
+        },
+      },
+      FlashcardResponse: {
+        type: 'object',
+        properties: {
+          flashcard: { $ref: '#/components/schemas/Flashcard' },
+        },
+      },
+      HealthResponse: {
+        type: 'object',
+        properties: {
+          status: { type: 'string', example: 'ok' },
+          service: { type: 'string', example: 'backend-flashcard' },
+          timestamp: { type: 'string', format: 'date-time' },
+        },
+      },
+      ErrorResponse: {
+        type: 'object',
+        properties: {
+          error: { type: 'string', example: 'Unauthorized' },
+          message: { type: 'string', example: 'Invalid or expired Firebase ID token' },
+        },
+      },
+      SignUpBody: {
+        type: 'object',
+        properties: {
+          email: { type: 'string', format: 'email', example: 'user@example.com' },
+          password: { type: 'string', format: 'password', example: 'secret123', minLength: 6 },
+        },
+        required: ['email', 'password'],
+      },
+      SignInBody: {
+        type: 'object',
+        properties: {
+          email: { type: 'string', format: 'email', example: 'user@example.com' },
+          password: { type: 'string', format: 'password', example: 'your-password' },
+        },
+        required: ['email', 'password'],
+      },
+      SignInResponse: {
+        type: 'object',
+        properties: {
+          uid: { type: 'string', example: 'firebase-uid' },
+          email: { type: 'string', example: 'user@example.com' },
+          idToken: { type: 'string', description: 'Firebase ID token — use as Bearer token' },
+          refreshToken: { type: 'string' },
+          expiresIn: { type: 'string', example: '3600' },
+          role: { type: 'string', enum: ['admin', 'end-user'], nullable: true },
+        },
+      },
+      SignOutResponse: {
+        type: 'object',
+        properties: {
+          message: { type: 'string', example: 'Signed out successfully. Refresh tokens revoked; discard stored credentials on the client.' },
+        },
+      },
+    },
+  },
+  paths: {
+    '/api/auth/sign-up': {
+      post: {
+        tags: ['Auth'],
+        summary: 'Sign up with email and password',
+        description:
+          'Creates a new Firebase Auth user, assigns custom claim `role: end-user`, and returns tokens. Requires `FIREBASE_WEB_API_KEY` on the server.',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/SignUpBody' },
+            },
+          },
+        },
+        responses: {
+          '201': {
+            description: 'Account created successfully',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/SignInResponse' },
+              },
+            },
+          },
+          '400': {
+            description: 'Invalid request body or weak password',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' },
+              },
+            },
+          },
+          '409': {
+            description: 'Email already registered',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/api/auth/sign-in': {
+      post: {
+        tags: ['Auth'],
+        summary: 'Sign in with email and password',
+        description:
+          'Authenticates against Firebase Auth and returns ID token, refresh token, and user role (from custom claims). Requires `FIREBASE_WEB_API_KEY` on the server.',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/SignInBody' },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: 'Signed in successfully',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/SignInResponse' },
+              },
+            },
+          },
+          '400': {
+            description: 'Invalid request body',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' },
+              },
+            },
+          },
+          '401': {
+            description: 'Invalid credentials',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' },
+              },
+            },
+          },
+          '403': {
+            description: 'Account disabled',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' },
+              },
+            },
+          },
+          '429': {
+            description: 'Too many attempts',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/api/auth/sign-out': {
+      post: {
+        tags: ['Auth'],
+        summary: 'Sign out',
+        description:
+          'Revokes Firebase refresh tokens for the authenticated user. Client must discard stored tokens locally.',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': {
+            description: 'Signed out successfully',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/SignOutResponse' },
+              },
+            },
+          },
+          '401': {
+            description: 'Missing or invalid token',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/api/health': {
+      get: {
+        tags: ['Health'],
+        summary: 'Health check',
+        description: 'Returns service status. No authentication required.',
+        responses: {
+          '200': {
+            description: 'Service is healthy',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/HealthResponse' },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/api/decks': {
+      get: {
+        tags: ['Public'],
+        summary: 'List published decks',
+        description:
+          'Returns all decks with `status: published`. Currently public (no auth). Intended for mobile clients.',
+        responses: {
+          '200': {
+            description: 'List of published decks',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/DeckListResponse' },
+              },
+            },
+          },
+          '500': {
+            description: 'Server error',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/api/decks/{deckId}/flashcards': {
+      get: {
+        tags: ['Public'],
+        summary: 'List published flashcards for a deck',
+        description:
+          'Returns published flashcards for a published deck. Returns 404 if the deck is missing or not published.',
+        parameters: [
+          {
+            name: 'deckId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' },
+            description: 'Firestore document ID of the deck',
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'List of published flashcards',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/FlashcardListResponse' },
+              },
+            },
+          },
+          '404': {
+            description: 'Published deck not found',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' },
+              },
+            },
+          },
+          '500': {
+            description: 'Server error',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/api/admin/decks': {
+      post: {
+        tags: ['Admin'],
+        summary: 'Create a new deck',
+        description: 'Creates a deck with `status: draft` and `cardCount: 0`. Requires `role: admin` custom claim.',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/CreateDeckBody' },
+            },
+          },
+        },
+        responses: {
+          '201': {
+            description: 'Deck created',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/DeckResponse' },
+              },
+            },
+          },
+          '400': {
+            description: 'Invalid request body',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' },
+              },
+            },
+          },
+          '401': {
+            description: 'Missing or invalid Firebase ID token',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' },
+              },
+            },
+          },
+          '403': {
+            description: 'User lacks admin role',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' },
+              },
+            },
+          },
+          '500': {
+            description: 'Server error',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/api/admin/flashcards': {
+      post: {
+        tags: ['Admin'],
+        summary: 'Create a flashcard',
+        description:
+          'Creates a draft flashcard linked to a deck and increments the deck `cardCount`. Requires `role: admin`.',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/CreateFlashcardBody' },
+            },
+          },
+        },
+        responses: {
+          '201': {
+            description: 'Flashcard created',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/FlashcardResponse' },
+              },
+            },
+          },
+          '400': {
+            description: 'Invalid request body',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' },
+              },
+            },
+          },
+          '401': {
+            description: 'Missing or invalid Firebase ID token',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' },
+              },
+            },
+          },
+          '403': {
+            description: 'User lacks admin role',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' },
+              },
+            },
+          },
+          '404': {
+            description: 'Deck not found',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' },
+              },
+            },
+          },
+          '500': {
+            description: 'Server error',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/api/admin/decks/{id}/publish': {
+      put: {
+        tags: ['Admin'],
+        summary: 'Publish a deck',
+        description:
+          'Sets deck `status` to `published`. Triggers Firestore real-time listeners on mobile clients. Requires `role: admin`.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' },
+            description: 'Firestore document ID of the deck',
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'Deck published',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/DeckResponse' },
+              },
+            },
+          },
+          '401': {
+            description: 'Missing or invalid Firebase ID token',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' },
+              },
+            },
+          },
+          '403': {
+            description: 'User lacks admin role',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' },
+              },
+            },
+          },
+          '404': {
+            description: 'Deck not found',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' },
+              },
+            },
+          },
+          '500': {
+            description: 'Server error',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+};
+
+export function setupSwagger(app: Application): void {
+  app.get('/api/docs.json', (_req, res) => {
+    res.json(swaggerSpec);
+  });
+
+  app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+    customSiteTitle: 'Psychology Flashcards API',
+  }));
+}
