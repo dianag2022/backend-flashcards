@@ -587,23 +587,26 @@ Use \`POST /api/auth/sign-out\` with a Bearer token to revoke refresh tokens ser
   },
 };
 
+const swaggerUiOptions = {
+  customSiteTitle: 'Psychology Flashcards API',
+  swaggerOptions: {
+    url: '/api/docs.json',
+  },
+};
+
+function fixSwaggerAssetPaths(html: string): string {
+  return html.replace(/"\.\//g, '"/api/docs/');
+}
+
 export function setupSwagger(app: Application): void {
   app.get('/api/docs.json', (_req, res) => {
     res.json(swaggerSpec);
   });
 
-  app.get('/api/docs', (_req, res) => {
-    res.redirect(301, '/api/docs/');
-  });
+  app.use('/api/docs', ...swaggerUi.serveFiles(swaggerSpec, swaggerUiOptions));
 
-  app.use(
-    '/api/docs',
-    ...swaggerUi.serve,
-    swaggerUi.setup(swaggerSpec, {
-      customSiteTitle: 'Psychology Flashcards API',
-      swaggerOptions: {
-        url: '/api/docs.json',
-      },
-    })
-  );
+  app.get(['/api/docs', '/api/docs/'], (_req, res) => {
+    const html = swaggerUi.generateHTML(swaggerSpec, swaggerUiOptions);
+    res.type('html').send(fixSwaggerAssetPaths(html));
+  });
 }
