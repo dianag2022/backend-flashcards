@@ -28,3 +28,7 @@ export interface CreateFlashcardBody {
   front: string;
   back: string;
 }
+
+export interface UpdateFlashcardsStatusBody {
+  flashcardIds: string[];
+}

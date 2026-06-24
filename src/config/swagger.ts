@@ -107,6 +107,17 @@ Use \`POST /api/auth/sign-out\` with a Bearer token to revoke refresh tokens ser
         },
         required: ['deckId', 'front', 'back'],
       },
+      UpdateFlashcardsStatusBody: {
+        type: 'object',
+        properties: {
+          flashcardIds: {
+            type: 'array',
+            items: { type: 'string' },
+            example: ['cardId1', 'cardId2'],
+          },
+        },
+        required: ['flashcardIds'],
+      },
       DeckListResponse: {
         type: 'object',
         properties: {
@@ -620,6 +631,114 @@ Use \`POST /api/auth/sign-out\` with a Bearer token to revoke refresh tokens ser
               },
             },
           },
+        },
+      },
+    },
+    '/api/admin/decks/{deckId}/flashcards': {
+      get: {
+        tags: ['Admin'],
+        summary: 'List all flashcards in a deck (admin)',
+        description:
+          'Returns draft and published flashcards for any deck. Use this to select cards to publish or draft.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'deckId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' },
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'All flashcards in the deck',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/FlashcardListResponse' },
+              },
+            },
+          },
+          '401': { description: 'Unauthorized' },
+          '403': { description: 'Forbidden' },
+          '404': { description: 'Deck not found' },
+        },
+      },
+    },
+    '/api/admin/decks/{deckId}/flashcards/publish': {
+      put: {
+        tags: ['Admin'],
+        summary: 'Publish selected flashcards',
+        description:
+          'Sets `status: published` on selected cards in a deck. Works for published or draft decks. Mobile clients only see cards when the deck is also published.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'deckId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/UpdateFlashcardsStatusBody' },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: 'Flashcards published',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/FlashcardListResponse' },
+              },
+            },
+          },
+          '400': { description: 'Invalid body or cards belong to another deck' },
+          '401': { description: 'Unauthorized' },
+          '403': { description: 'Forbidden' },
+          '404': { description: 'Deck or flashcard not found' },
+        },
+      },
+    },
+    '/api/admin/decks/{deckId}/flashcards/draft': {
+      put: {
+        tags: ['Admin'],
+        summary: 'Move selected flashcards to draft',
+        description:
+          'Sets `status: draft` on selected cards. Removes them from the mobile app if the deck is published.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'deckId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/UpdateFlashcardsStatusBody' },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: 'Flashcards moved to draft',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/FlashcardListResponse' },
+              },
+            },
+          },
+          '400': { description: 'Invalid body or cards belong to another deck' },
+          '401': { description: 'Unauthorized' },
+          '403': { description: 'Forbidden' },
+          '404': { description: 'Deck or flashcard not found' },
         },
       },
     },

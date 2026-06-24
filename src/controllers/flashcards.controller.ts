@@ -2,7 +2,12 @@ import { Request, Response } from 'express';
 import { FieldValue } from 'firebase-admin/firestore';
 import { db } from '../config/firebase';
 import { COLLECTIONS } from '../constants/collections';
-import { CreateFlashcardBody, Flashcard } from '../types/content.types';
+import {
+  ContentStatus,
+  CreateFlashcardBody,
+  Flashcard,
+  UpdateFlashcardsStatusBody,
+} from '../types/content.types';
 import { toIsoString } from '../utils/firestore';
 
 function mapFlashcard(id: string, data: FirebaseFirestore.DocumentData): Flashcard {
@@ -42,6 +47,113 @@ function parseCreateFlashcardBody(body: unknown): CreateFlashcardBody | null {
   };
 }
 
+function parseUpdateFlashcardsStatusBody(body: unknown): UpdateFlashcardsStatusBody | null {
+  if (!body || typeof body !== 'object') {
+    return null;
+  }
+
+  const { flashcardIds } = body as Record<string, unknown>;
+
+  if (!Array.isArray(flashcardIds) || flashcardIds.length === 0) {
+    return null;
+  }
+
+  const ids = flashcardIds.filter(
+    (id): id is string => typeof id === 'string' && id.trim().length > 0
+  );
+
+  if (ids.length !== flashcardIds.length) {
+    return null;
+  }
+
+  return { flashcardIds: ids.map((id) => id.trim()) };
+}
+
+async function getDeckOrRespond(deckId: string, res: Response): Promise<boolean> {
+  const deck = await db.collection(COLLECTIONS.DECKS).doc(deckId).get();
+
+  if (!deck.exists) {
+    res.status(404).json({
+      error: 'Not Found',
+      message: `Deck not found: ${deckId}`,
+    });
+    return false;
+  }
+
+  return true;
+}
+
+async function updateFlashcardsStatus(
+  req: Request,
+  res: Response,
+  status: ContentStatus
+): Promise<void> {
+  const deckId = String(req.params.deckId);
+  const payload = parseUpdateFlashcardsStatusBody(req.body);
+
+  if (!payload) {
+    res.status(400).json({
+      error: 'Bad Request',
+      message: 'flashcardIds (non-empty array of strings) is required',
+    });
+    return;
+  }
+
+  const uniqueIds = [...new Set(payload.flashcardIds)];
+
+  try {
+    if (!(await getDeckOrRespond(deckId, res))) {
+      return;
+    }
+
+    const deckRef = db.collection(COLLECTIONS.DECKS).doc(deckId);
+    const flashcardRefs = uniqueIds.map((id) => db.collection(COLLECTIONS.FLASHCARDS).doc(id));
+    const snapshots = await db.getAll(...flashcardRefs);
+
+    const missingIds = uniqueIds.filter((_id, index) => !snapshots[index].exists);
+    if (missingIds.length > 0) {
+      res.status(404).json({
+        error: 'Not Found',
+        message: `Flashcards not found: ${missingIds.join(', ')}`,
+      });
+      return;
+    }
+
+    const wrongDeckIds = snapshots
+      .filter((doc) => doc.data()?.deckId !== deckId)
+      .map((doc) => doc.id);
+
+    if (wrongDeckIds.length > 0) {
+      res.status(400).json({
+        error: 'Bad Request',
+        message: `Flashcards do not belong to deck ${deckId}: ${wrongDeckIds.join(', ')}`,
+      });
+      return;
+    }
+
+    const now = FieldValue.serverTimestamp();
+    const batch = db.batch();
+
+    snapshots.forEach((doc) => {
+      batch.update(doc.ref, { status });
+    });
+
+    batch.update(deckRef, { updatedAt: now });
+    await batch.commit();
+
+    const updated = await db.getAll(...flashcardRefs);
+    const flashcards = updated.map((doc) => mapFlashcard(doc.id, doc.data()!));
+
+    res.status(200).json({ flashcards });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: `Failed to update flashcards: ${message}`,
+    });
+  }
+}
+
 export async function listPublishedFlashcardsByDeck(
   req: Request,
   res: Response
@@ -64,6 +176,31 @@ export async function listPublishedFlashcardsByDeck(
       .collection(COLLECTIONS.FLASHCARDS)
       .where('deckId', '==', deckId)
       .where('status', '==', 'published')
+      .get();
+
+    const flashcards = snapshot.docs.map((doc) => mapFlashcard(doc.id, doc.data()));
+
+    res.status(200).json({ flashcards });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: `Failed to fetch flashcards: ${message}`,
+    });
+  }
+}
+
+export async function listAdminFlashcardsByDeck(req: Request, res: Response): Promise<void> {
+  const deckId = String(req.params.deckId);
+
+  try {
+    if (!(await getDeckOrRespond(deckId, res))) {
+      return;
+    }
+
+    const snapshot = await db
+      .collection(COLLECTIONS.FLASHCARDS)
+      .where('deckId', '==', deckId)
       .get();
 
     const flashcards = snapshot.docs.map((doc) => mapFlashcard(doc.id, doc.data()));
@@ -130,4 +267,12 @@ export async function createFlashcard(req: Request, res: Response): Promise<void
       message: `Failed to create flashcard: ${message}`,
     });
   }
+}
+
+export async function publishFlashcards(req: Request, res: Response): Promise<void> {
+  await updateFlashcardsStatus(req, res, 'published');
+}
+
+export async function draftFlashcards(req: Request, res: Response): Promise<void> {
+  await updateFlashcardsStatus(req, res, 'draft');
 }
