@@ -6,6 +6,10 @@ export interface AuthCredentialsBody {
 export type SignInBody = AuthCredentialsBody;
 export type SignUpBody = AuthCredentialsBody;
 
+export interface AdminSetupBody extends AuthCredentialsBody {
+  setupSecret: string;
+}
+
 export interface AuthTokenResponse {
   uid: string;
   email: string;

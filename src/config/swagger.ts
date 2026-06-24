@@ -27,13 +27,15 @@ The backend verifies tokens with Firebase Admin SDK (\`auth.verifyIdToken\`). Ro
 | \`admin\` | Web admin panel — create decks/flashcards, publish content |
 | \`end-user\` | Mobile app — read published content (when auth is enabled on public routes) |
 
-Assign admin role for testing: \`npm run set-admin-role -- <firebase-uid>\`
+Assign admin role for testing: \`npm run set-admin-role -- <firebase-uid>\` (developer fallback only).
 
-After assigning claims, the user must **sign out and sign in again** to refresh the ID token.
+For clients, use \`/api/auth/sign-up-admin\` or \`/api/auth/promote-to-admin\` with \`ADMIN_SETUP_SECRET\` instead of CLI commands.
 
 ## Sign in / Sign out
 
-Use \`POST /api/auth/sign-up\` to register a new end-user account.
+Use \`POST /api/auth/sign-up\` to register a mobile end-user account (\`role: end-user\`).
+Use \`POST /api/auth/sign-up-admin\` to register a web admin account (\`role: admin\`) with the server \`ADMIN_SETUP_SECRET\`.
+Use \`POST /api/auth/promote-to-admin\` to upgrade an existing account to admin using email, password, and \`ADMIN_SETUP_SECRET\`.
 Use \`POST /api/auth/sign-in\` with email and password to obtain Firebase tokens from the backend.
 Use \`POST /api/auth/sign-out\` with a Bearer token to revoke refresh tokens server-side.
     `.trim(),
@@ -158,6 +160,19 @@ Use \`POST /api/auth/sign-out\` with a Bearer token to revoke refresh tokens ser
         },
         required: ['email', 'password'],
       },
+      AdminSetupBody: {
+        type: 'object',
+        properties: {
+          email: { type: 'string', format: 'email', example: 'admin@example.com' },
+          password: { type: 'string', format: 'password', example: 'secret123', minLength: 6 },
+          setupSecret: {
+            type: 'string',
+            description: 'Must match server env var ADMIN_SETUP_SECRET',
+            example: 'your-admin-setup-secret',
+          },
+        },
+        required: ['email', 'password', 'setupSecret'],
+      },
       SignInBody: {
         type: 'object',
         properties: {
@@ -219,6 +234,90 @@ Use \`POST /api/auth/sign-out\` with a Bearer token to revoke refresh tokens ser
           },
           '409': {
             description: 'Email already registered',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/api/auth/sign-up-admin': {
+      post: {
+        tags: ['Auth'],
+        summary: 'Sign up as admin (web panel)',
+        description:
+          'Creates a Firebase user and assigns `role: admin`. Requires `setupSecret` matching server `ADMIN_SETUP_SECRET`. No CLI needed.',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/AdminSetupBody' },
+            },
+          },
+        },
+        responses: {
+          '201': {
+            description: 'Admin account created',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/SignInResponse' },
+              },
+            },
+          },
+          '403': {
+            description: 'Invalid setup secret',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' },
+              },
+            },
+          },
+          '409': {
+            description: 'Email already registered — use promote-to-admin instead',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/api/auth/promote-to-admin': {
+      post: {
+        tags: ['Auth'],
+        summary: 'Promote existing user to admin',
+        description:
+          'Verifies email/password, assigns `role: admin`, and returns a fresh token with the admin claim.',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/AdminSetupBody' },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: 'User promoted to admin',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/SignInResponse' },
+              },
+            },
+          },
+          '401': {
+            description: 'Invalid email or password',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' },
+              },
+            },
+          },
+          '403': {
+            description: 'Invalid setup secret',
             content: {
               'application/json': {
                 schema: { $ref: '#/components/schemas/ErrorResponse' },

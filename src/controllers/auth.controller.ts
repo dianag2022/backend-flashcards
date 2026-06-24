@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { auth } from '../config/firebase';
-import { AuthCredentialsBody, AuthTokenResponse } from '../types/auth.types';
+import { UserRole } from '../middlewares/authMiddleware';
+import { AdminSetupBody, AuthCredentialsBody, AuthTokenResponse } from '../types/auth.types';
 
 const FIREBASE_SIGN_IN_URL =
   'https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword';
@@ -33,6 +34,11 @@ function getFirebaseWebApiKey(): string {
   return apiKey;
 }
 
+function getAdminSetupSecret(): string | null {
+  const secret = process.env.ADMIN_SETUP_SECRET?.trim();
+  return secret || null;
+}
+
 function parseCredentialsBody(body: unknown): AuthCredentialsBody | null {
   if (!body || typeof body !== 'object') {
     return null;
@@ -56,6 +62,30 @@ function parseCredentialsBody(body: unknown): AuthCredentialsBody | null {
     email: email.trim(),
     password,
   };
+}
+
+function parseAdminSetupBody(body: unknown): AdminSetupBody | null {
+  const credentials = parseCredentialsBody(body);
+
+  if (!credentials || !body || typeof body !== 'object') {
+    return null;
+  }
+
+  const { setupSecret } = body as Record<string, unknown>;
+
+  if (typeof setupSecret !== 'string' || !setupSecret.trim()) {
+    return null;
+  }
+
+  return {
+    ...credentials,
+    setupSecret: setupSecret.trim(),
+  };
+}
+
+function validateSetupSecret(provided: string): boolean {
+  const secret = getAdminSetupSecret();
+  return Boolean(secret && provided === secret);
 }
 
 function mapFirebaseAuthError(message: string): { status: number; error: string; message: string } {
@@ -168,6 +198,33 @@ async function callFirebaseAuth(
   return { ok: true, data };
 }
 
+async function assignRoleAndRespond(
+  res: Response,
+  data: FirebaseAuthSuccess,
+  apiKey: string,
+  role: UserRole,
+  statusCode: number
+): Promise<void> {
+  await auth.setCustomUserClaims(data.localId, { role });
+  const authResponse = await buildAuthResponse(data, apiKey, true);
+  res.status(statusCode).json(authResponse);
+}
+
+function rejectInvalidSetupSecret(res: Response): void {
+  if (!getAdminSetupSecret()) {
+    res.status(503).json({
+      error: 'Service Unavailable',
+      message: 'Admin setup is not configured. Set ADMIN_SETUP_SECRET on the server.',
+    });
+    return;
+  }
+
+  res.status(403).json({
+    error: 'Forbidden',
+    message: 'Invalid setup secret',
+  });
+}
+
 export async function signUp(req: Request, res: Response): Promise<void> {
   const payload = parseCredentialsBody(req.body);
 
@@ -200,16 +257,106 @@ export async function signUp(req: Request, res: Response): Promise<void> {
       return;
     }
 
-    await auth.setCustomUserClaims(result.data.localId, { role: 'end-user' });
-
-    const authResponse = await buildAuthResponse(result.data, apiKey, true);
-
-    res.status(201).json(authResponse);
+    await assignRoleAndRespond(res, result.data, apiKey, 'end-user', 201);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     res.status(500).json({
       error: 'Internal Server Error',
       message: `Sign up failed: ${message}`,
+    });
+  }
+}
+
+export async function signUpAdmin(req: Request, res: Response): Promise<void> {
+  const payload = parseAdminSetupBody(req.body);
+
+  if (!payload) {
+    res.status(400).json({
+      error: 'Bad Request',
+      message: 'email, password (min. 6 characters), and setupSecret are required',
+    });
+    return;
+  }
+
+  if (!validateSetupSecret(payload.setupSecret)) {
+    rejectInvalidSetupSecret(res);
+    return;
+  }
+
+  let apiKey: string;
+
+  try {
+    apiKey = getFirebaseWebApiKey();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: 'Internal Server Error', message });
+    return;
+  }
+
+  try {
+    const result = await callFirebaseAuth(FIREBASE_SIGN_UP_URL, apiKey, payload);
+
+    if (!result.ok) {
+      res.status(result.mapped.status).json({
+        error: result.mapped.error,
+        message: result.mapped.message,
+      });
+      return;
+    }
+
+    await assignRoleAndRespond(res, result.data, apiKey, 'admin', 201);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: `Admin sign up failed: ${message}`,
+    });
+  }
+}
+
+export async function promoteToAdmin(req: Request, res: Response): Promise<void> {
+  const payload = parseAdminSetupBody(req.body);
+
+  if (!payload) {
+    res.status(400).json({
+      error: 'Bad Request',
+      message: 'email, password (min. 6 characters), and setupSecret are required',
+    });
+    return;
+  }
+
+  if (!validateSetupSecret(payload.setupSecret)) {
+    rejectInvalidSetupSecret(res);
+    return;
+  }
+
+  let apiKey: string;
+
+  try {
+    apiKey = getFirebaseWebApiKey();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: 'Internal Server Error', message });
+    return;
+  }
+
+  try {
+    const result = await callFirebaseAuth(FIREBASE_SIGN_IN_URL, apiKey, payload);
+
+    if (!result.ok) {
+      res.status(result.mapped.status).json({
+        error: result.mapped.error,
+        message: result.mapped.message,
+      });
+      return;
+    }
+
+    await assignRoleAndRespond(res, result.data, apiKey, 'admin', 200);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: `Promote to admin failed: ${message}`,
     });
   }
 }
