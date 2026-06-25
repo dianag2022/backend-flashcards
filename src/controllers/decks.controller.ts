@@ -193,3 +193,62 @@ export async function draftDeck(req: Request, res: Response): Promise<void> {
     });
   }
 }
+
+async function deleteFlashcardsByDeck(deckId: string): Promise<number> {
+  const snapshot = await db
+    .collection(COLLECTIONS.FLASHCARDS)
+    .where('deckId', '==', deckId)
+    .get();
+
+  if (snapshot.empty) {
+    return 0;
+  }
+
+  const docs = snapshot.docs;
+
+  for (let i = 0; i < docs.length; i += FIRESTORE_BATCH_LIMIT) {
+    const chunk = docs.slice(i, i + FIRESTORE_BATCH_LIMIT);
+    const batch = db.batch();
+
+    chunk.forEach((doc) => {
+      batch.delete(doc.ref);
+    });
+
+    await batch.commit();
+  }
+
+  return docs.length;
+}
+
+export async function deleteDeck(req: Request, res: Response): Promise<void> {
+  const id = String(req.params.id);
+
+  try {
+    const docRef = db.collection(COLLECTIONS.DECKS).doc(id);
+    const existing = await docRef.get();
+
+    if (!existing.exists) {
+      res.status(404).json({
+        error: 'Not Found',
+        message: `Deck not found: ${id}`,
+      });
+      return;
+    }
+
+    const flashcardsDeleted = await deleteFlashcardsByDeck(id);
+
+    await docRef.delete();
+
+    res.status(200).json({
+      message: 'Deck deleted successfully',
+      deckId: id,
+      flashcardsDeleted,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: `Failed to delete deck: ${message}`,
+    });
+  }
+}

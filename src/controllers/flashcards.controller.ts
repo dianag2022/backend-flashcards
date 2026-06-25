@@ -276,3 +276,53 @@ export async function publishFlashcards(req: Request, res: Response): Promise<vo
 export async function draftFlashcards(req: Request, res: Response): Promise<void> {
   await updateFlashcardsStatus(req, res, 'draft');
 }
+
+export async function deleteFlashcard(req: Request, res: Response): Promise<void> {
+  const id = String(req.params.id);
+
+  try {
+    const flashcardRef = db.collection(COLLECTIONS.FLASHCARDS).doc(id);
+    const existing = await flashcardRef.get();
+
+    if (!existing.exists) {
+      res.status(404).json({
+        error: 'Not Found',
+        message: `Flashcard not found: ${id}`,
+      });
+      return;
+    }
+
+    const deckId = existing.data()?.deckId as string;
+    const deckRef = db.collection(COLLECTIONS.DECKS).doc(deckId);
+    const deck = await deckRef.get();
+
+    if (!deck.exists) {
+      res.status(404).json({
+        error: 'Not Found',
+        message: `Deck not found: ${deckId}`,
+      });
+      return;
+    }
+
+    const now = FieldValue.serverTimestamp();
+
+    await db.runTransaction(async (transaction) => {
+      transaction.delete(flashcardRef);
+      transaction.update(deckRef, {
+        cardCount: FieldValue.increment(-1),
+        updatedAt: now,
+      });
+    });
+
+    res.status(200).json({
+      message: 'Flashcard deleted successfully',
+      flashcardId: id,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: `Failed to delete flashcard: ${message}`,
+    });
+  }
+}

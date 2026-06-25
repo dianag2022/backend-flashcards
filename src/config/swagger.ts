@@ -146,6 +146,21 @@ Use \`POST /api/auth/sign-out\` with a Bearer token to revoke refresh tokens ser
           },
         },
       },
+      DeleteDeckResponse: {
+        type: 'object',
+        properties: {
+          message: { type: 'string', example: 'Deck deleted successfully' },
+          deckId: { type: 'string', example: 'abc123' },
+          flashcardsDeleted: { type: 'integer', example: 12 },
+        },
+      },
+      DeleteFlashcardResponse: {
+        type: 'object',
+        properties: {
+          message: { type: 'string', example: 'Flashcard deleted successfully' },
+          flashcardId: { type: 'string', example: 'card456' },
+        },
+      },
       FlashcardListResponse: {
         type: 'object',
         properties: {
@@ -727,6 +742,38 @@ Use \`POST /api/auth/sign-out\` with a Bearer token to revoke refresh tokens ser
         },
       },
     },
+    '/api/admin/flashcards/{id}': {
+      delete: {
+        tags: ['Admin'],
+        summary: 'Delete a flashcard',
+        description:
+          'Permanently deletes a flashcard and decrements the parent deck `cardCount`. Requires `role: admin`.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' },
+            description: 'Firestore document ID of the flashcard',
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'Flashcard deleted',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/DeleteFlashcardResponse' },
+              },
+            },
+          },
+          '401': { description: 'Unauthorized' },
+          '403': { description: 'Forbidden' },
+          '404': { description: 'Flashcard or deck not found' },
+          '500': { description: 'Server error' },
+        },
+      },
+    },
     '/api/admin/decks/{deckId}/flashcards': {
       get: {
         tags: ['Admin'],
@@ -917,6 +964,38 @@ Use \`POST /api/auth/sign-out\` with a Bearer token to revoke refresh tokens ser
             content: {
               'application/json': {
                 schema: { $ref: '#/components/schemas/DraftDeckResponse' },
+              },
+            },
+          },
+          '401': { description: 'Unauthorized' },
+          '403': { description: 'Forbidden' },
+          '404': { description: 'Deck not found' },
+          '500': { description: 'Server error' },
+        },
+      },
+    },
+    '/api/admin/decks/{id}': {
+      delete: {
+        tags: ['Admin'],
+        summary: 'Delete a deck',
+        description:
+          'Permanently deletes a deck and all flashcards belonging to it. Requires `role: admin`.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' },
+            description: 'Firestore document ID of the deck',
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'Deck and flashcards deleted',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/DeleteDeckResponse' },
               },
             },
           },
