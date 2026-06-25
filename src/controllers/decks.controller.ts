@@ -122,3 +122,74 @@ export async function publishDeck(req: Request, res: Response): Promise<void> {
     });
   }
 }
+
+const FIRESTORE_BATCH_LIMIT = 500;
+
+async function draftAllFlashcardsInDeck(deckId: string): Promise<number> {
+  const snapshot = await db
+    .collection(COLLECTIONS.FLASHCARDS)
+    .where('deckId', '==', deckId)
+    .get();
+
+  if (snapshot.empty) {
+    return 0;
+  }
+
+  const docs = snapshot.docs;
+  let drafted = 0;
+
+  for (let i = 0; i < docs.length; i += FIRESTORE_BATCH_LIMIT) {
+    const chunk = docs.slice(i, i + FIRESTORE_BATCH_LIMIT);
+    const batch = db.batch();
+    let batchOps = 0;
+
+    chunk.forEach((doc) => {
+      if (doc.data().status !== 'draft') {
+        batch.update(doc.ref, { status: 'draft' });
+        drafted += 1;
+        batchOps += 1;
+      }
+    });
+
+    if (batchOps > 0) {
+      await batch.commit();
+    }
+  }
+
+  return drafted;
+}
+
+export async function draftDeck(req: Request, res: Response): Promise<void> {
+  const id = String(req.params.id);
+
+  try {
+    const docRef = db.collection(COLLECTIONS.DECKS).doc(id);
+    const existing = await docRef.get();
+
+    if (!existing.exists) {
+      res.status(404).json({
+        error: 'Not Found',
+        message: `Deck not found: ${id}`,
+      });
+      return;
+    }
+
+    const flashcardsDrafted = await draftAllFlashcardsInDeck(id);
+
+    await docRef.update({
+      status: 'draft',
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    const updated = await docRef.get();
+    const deck = mapDeck(updated.id, updated.data()!);
+
+    res.status(200).json({ deck, flashcardsDrafted });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: `Failed to draft deck: ${message}`,
+    });
+  }
+}

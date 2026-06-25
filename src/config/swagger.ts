@@ -135,6 +135,17 @@ Use \`POST /api/auth/sign-out\` with a Bearer token to revoke refresh tokens ser
           deck: { $ref: '#/components/schemas/Deck' },
         },
       },
+      DraftDeckResponse: {
+        type: 'object',
+        properties: {
+          deck: { $ref: '#/components/schemas/Deck' },
+          flashcardsDrafted: {
+            type: 'integer',
+            description: 'Number of flashcards moved to draft',
+            example: 12,
+          },
+        },
+      },
       FlashcardListResponse: {
         type: 'object',
         properties: {
@@ -881,6 +892,38 @@ Use \`POST /api/auth/sign-out\` with a Bearer token to revoke refresh tokens ser
               },
             },
           },
+        },
+      },
+    },
+    '/api/admin/decks/{id}/draft': {
+      put: {
+        tags: ['Admin'],
+        summary: 'Draft a complete deck',
+        description:
+          'Sets deck `status` to `draft` and moves all flashcards in the deck to draft. Removes the deck from mobile clients. Requires `role: admin`.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' },
+            description: 'Firestore document ID of the deck',
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'Deck and all its flashcards moved to draft',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/DraftDeckResponse' },
+              },
+            },
+          },
+          '401': { description: 'Unauthorized' },
+          '403': { description: 'Forbidden' },
+          '404': { description: 'Deck not found' },
+          '500': { description: 'Server error' },
         },
       },
     },

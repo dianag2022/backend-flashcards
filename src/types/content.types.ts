@@ -32,3 +32,8 @@ export interface CreateFlashcardBody {
 export interface UpdateFlashcardsStatusBody {
   flashcardIds: string[];
 }
+
+export interface DraftDeckResponse {
+  deck: Deck;
+  flashcardsDrafted: number;
+}

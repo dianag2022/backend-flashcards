@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { createDeck, listPublishedDecks, publishDeck } from '../controllers/decks.controller';
+import { createDeck, draftDeck, listPublishedDecks, publishDeck } from '../controllers/decks.controller';
 import {
   createFlashcard,
   draftFlashcards,
@@ -20,5 +20,6 @@ router.get('/admin/decks/:deckId/flashcards', checkAuth('admin'), listAdminFlash
 router.put('/admin/decks/:deckId/flashcards/publish', checkAuth('admin'), publishFlashcards);
 router.put('/admin/decks/:deckId/flashcards/draft', checkAuth('admin'), draftFlashcards);
 router.put('/admin/decks/:id/publish', checkAuth('admin'), publishDeck);
+router.put('/admin/decks/:id/draft', checkAuth('admin'), draftDeck);
 
 export default router;
