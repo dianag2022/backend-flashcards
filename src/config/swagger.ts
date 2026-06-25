@@ -37,6 +37,8 @@ Use \`POST /api/auth/sign-up\` to register a mobile end-user account (\`role: en
 Use \`POST /api/auth/sign-up-admin\` to register a web admin account (\`role: admin\`) with the server \`ADMIN_SETUP_SECRET\`.
 Use \`POST /api/auth/promote-to-admin\` to upgrade an existing account to admin using email, password, and \`ADMIN_SETUP_SECRET\`.
 Use \`POST /api/auth/sign-in\` with email and password to obtain Firebase tokens from the backend.
+Use \`POST /api/auth/forgot-password\` to email a password reset link.
+Use \`POST /api/auth/reset-password\` to set a new password using the \`oobCode\` from that email.
 Use \`POST /api/auth/sign-out\` with a Bearer token to revoke refresh tokens server-side.
     `.trim(),
   },
@@ -207,6 +209,32 @@ Use \`POST /api/auth/sign-out\` with a Bearer token to revoke refresh tokens ser
         type: 'object',
         properties: {
           message: { type: 'string', example: 'Signed out successfully. Refresh tokens revoked; discard stored credentials on the client.' },
+        },
+      },
+      ForgotPasswordBody: {
+        type: 'object',
+        properties: {
+          email: { type: 'string', format: 'email', example: 'user@example.com' },
+        },
+        required: ['email'],
+      },
+      ResetPasswordBody: {
+        type: 'object',
+        properties: {
+          oobCode: {
+            type: 'string',
+            description: 'Reset code from the Firebase password reset email link (query param `oobCode`)',
+            example: 'ABC123_reset_code_from_email',
+          },
+          newPassword: { type: 'string', format: 'password', minLength: 6, example: 'newSecret123' },
+        },
+        required: ['oobCode', 'newPassword'],
+      },
+      MessageResponse: {
+        type: 'object',
+        properties: {
+          message: { type: 'string' },
+          email: { type: 'string', format: 'email' },
         },
       },
     },
@@ -393,6 +421,60 @@ Use \`POST /api/auth/sign-out\` with a Bearer token to revoke refresh tokens ser
               },
             },
           },
+        },
+      },
+    },
+    '/api/auth/forgot-password': {
+      post: {
+        tags: ['Auth'],
+        summary: 'Request password reset email',
+        description:
+          'Sends a Firebase password reset email. Always returns success to avoid revealing whether the email exists.',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/ForgotPasswordBody' },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: 'Reset email sent if account exists',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/MessageResponse' },
+              },
+            },
+          },
+          '400': { description: 'Invalid request body' },
+        },
+      },
+    },
+    '/api/auth/reset-password': {
+      post: {
+        tags: ['Auth'],
+        summary: 'Complete password reset',
+        description:
+          'Sets a new password using the `oobCode` from the reset link in the email. After success, sign in with the new password.',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/ResetPasswordBody' },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: 'Password updated',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/MessageResponse' },
+              },
+            },
+          },
+          '400': { description: 'Invalid or expired reset code, or weak password' },
         },
       },
     },

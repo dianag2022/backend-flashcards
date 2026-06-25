@@ -7,6 +7,10 @@ const FIREBASE_SIGN_IN_URL =
   'https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword';
 const FIREBASE_SIGN_UP_URL =
   'https://identitytoolkit.googleapis.com/v1/accounts:signUp';
+const FIREBASE_SEND_OOB_CODE_URL =
+  'https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode';
+const FIREBASE_RESET_PASSWORD_URL =
+  'https://identitytoolkit.googleapis.com/v1/accounts:resetPassword';
 const FIREBASE_TOKEN_URL = 'https://securetoken.googleapis.com/v1/token';
 
 interface FirebaseAuthSuccess {
@@ -401,6 +405,183 @@ export async function signIn(req: Request, res: Response): Promise<void> {
     res.status(500).json({
       error: 'Internal Server Error',
       message: `Sign in failed: ${message}`,
+    });
+  }
+}
+
+function parseEmailBody(body: unknown): string | null {
+  if (!body || typeof body !== 'object') {
+    return null;
+  }
+
+  const { email } = body as Record<string, unknown>;
+
+  if (typeof email !== 'string' || !email.trim()) {
+    return null;
+  }
+
+  return email.trim();
+}
+
+function parseResetPasswordBody(body: unknown): { oobCode: string; newPassword: string } | null {
+  if (!body || typeof body !== 'object') {
+    return null;
+  }
+
+  const { oobCode, newPassword } = body as Record<string, unknown>;
+
+  if (typeof oobCode !== 'string' || !oobCode.trim()) {
+    return null;
+  }
+
+  if (typeof newPassword !== 'string' || newPassword.length < 6) {
+    return null;
+  }
+
+  return {
+    oobCode: oobCode.trim(),
+    newPassword,
+  };
+}
+
+export async function forgotPassword(req: Request, res: Response): Promise<void> {
+  const email = parseEmailBody(req.body);
+
+  if (!email) {
+    res.status(400).json({
+      error: 'Bad Request',
+      message: 'email is required',
+    });
+    return;
+  }
+
+  let apiKey: string;
+
+  try {
+    apiKey = getFirebaseWebApiKey();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: 'Internal Server Error', message });
+    return;
+  }
+
+  try {
+    const requestBody: Record<string, string> = {
+      requestType: 'PASSWORD_RESET',
+      email,
+    };
+
+    const continueUrl = process.env.FIREBASE_PASSWORD_RESET_CONTINUE_URL?.trim();
+    if (continueUrl) {
+      requestBody.continueUrl = continueUrl;
+    }
+
+    const response = await fetch(`${FIREBASE_SEND_OOB_CODE_URL}?key=${apiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestBody),
+    });
+
+    if (!response.ok) {
+      const data = (await response.json()) as { error?: { message?: string } };
+      const firebaseMessage = data.error?.message ?? '';
+
+      if (firebaseMessage.toUpperCase().includes('EMAIL_NOT_FOUND')) {
+        res.status(200).json({
+          message: 'If an account exists for this email, a password reset link has been sent.',
+        });
+        return;
+      }
+
+      const mapped = mapFirebaseAuthError(firebaseMessage);
+      res.status(mapped.status).json({
+        error: mapped.error,
+        message: mapped.message,
+      });
+      return;
+    }
+
+    res.status(200).json({
+      message: 'If an account exists for this email, a password reset link has been sent.',
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: `Password reset request failed: ${message}`,
+    });
+  }
+}
+
+export async function resetPassword(req: Request, res: Response): Promise<void> {
+  const payload = parseResetPasswordBody(req.body);
+
+  if (!payload) {
+    res.status(400).json({
+      error: 'Bad Request',
+      message: 'oobCode and newPassword (min. 6 characters) are required',
+    });
+    return;
+  }
+
+  let apiKey: string;
+
+  try {
+    apiKey = getFirebaseWebApiKey();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: 'Internal Server Error', message });
+    return;
+  }
+
+  try {
+    const response = await fetch(`${FIREBASE_RESET_PASSWORD_URL}?key=${apiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        oobCode: payload.oobCode,
+        newPassword: payload.newPassword,
+      }),
+    });
+
+    const data = (await response.json()) as { error?: { message?: string }; email?: string };
+
+    if (!response.ok) {
+      const firebaseMessage = data.error?.message ?? 'Password reset failed';
+      const normalized = firebaseMessage.toUpperCase();
+
+      if (normalized.includes('EXPIRED_OOB_CODE') || normalized.includes('INVALID_OOB_CODE')) {
+        res.status(400).json({
+          error: 'Bad Request',
+          message: 'Invalid or expired reset code. Request a new password reset email.',
+        });
+        return;
+      }
+
+      if (normalized.includes('WEAK_PASSWORD')) {
+        res.status(400).json({
+          error: 'Bad Request',
+          message: 'Password must be at least 6 characters',
+        });
+        return;
+      }
+
+      res.status(400).json({
+        error: 'Bad Request',
+        message: 'Password reset failed',
+      });
+      return;
+    }
+
+    res.status(200).json({
+      message: 'Password updated successfully. You can now sign in with your new password.',
+      email: data.email,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: `Password reset failed: ${message}`,
     });
   }
 }

@@ -25,3 +25,16 @@ export type SignUpResponse = AuthTokenResponse;
 export interface SignOutResponse {
   message: string;
 }
+
+export interface ForgotPasswordBody {
+  email: string;
+}
+
+export interface ResetPasswordBody {
+  oobCode: string;
+  newPassword: string;
+}
+
+export interface MessageResponse {
+  message: string;
+}
