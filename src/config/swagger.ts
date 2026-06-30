@@ -81,17 +81,31 @@ Use \`POST /api/auth/sign-out\` with a Bearer token to revoke refresh tokens ser
         },
         required: ['id', 'title', 'description', 'status', 'cardCount', 'updatedAt'],
       },
+      Category: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', example: 'cat789' },
+          deckId: { type: 'string', example: 'abc123' },
+          title: { type: 'string', example: 'Memory' },
+          description: { type: 'string', example: 'Memory systems and processes' },
+          status: { $ref: '#/components/schemas/ContentStatus' },
+          cardCount: { type: 'integer', example: 5 },
+          updatedAt: { type: 'string', format: 'date-time' },
+        },
+        required: ['id', 'deckId', 'title', 'description', 'status', 'cardCount', 'updatedAt'],
+      },
       Flashcard: {
         type: 'object',
         properties: {
           id: { type: 'string', example: 'card456' },
           deckId: { type: 'string', example: 'abc123' },
+          categoryId: { type: 'string', example: 'cat789' },
           front: { type: 'string', example: 'What is working memory?' },
           back: { type: 'string', example: 'A limited-capacity system for temporary information storage.' },
           status: { $ref: '#/components/schemas/ContentStatus' },
           createdAt: { type: 'string', format: 'date-time' },
         },
-        required: ['id', 'deckId', 'front', 'back', 'status', 'createdAt'],
+        required: ['id', 'deckId', 'categoryId', 'front', 'back', 'status', 'createdAt'],
       },
       CreateDeckBody: {
         type: 'object',
@@ -101,14 +115,34 @@ Use \`POST /api/auth/sign-out\` with a Bearer token to revoke refresh tokens ser
         },
         required: ['title', 'description'],
       },
+      CreateCategoryBody: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', example: 'Memory' },
+          description: { type: 'string', example: 'Memory systems and processes' },
+        },
+        required: ['title', 'description'],
+      },
       CreateFlashcardBody: {
         type: 'object',
         properties: {
           deckId: { type: 'string', example: 'abc123' },
+          categoryId: { type: 'string', example: 'cat789' },
           front: { type: 'string', example: 'What is working memory?' },
           back: { type: 'string', example: 'A limited-capacity system for temporary information storage.' },
         },
-        required: ['deckId', 'front', 'back'],
+        required: ['deckId', 'categoryId', 'front', 'back'],
+      },
+      UpdateCategoriesStatusBody: {
+        type: 'object',
+        properties: {
+          categoryIds: {
+            type: 'array',
+            items: { type: 'string' },
+            example: ['cat789', 'cat790'],
+          },
+        },
+        required: ['categoryIds'],
       },
       UpdateFlashcardsStatusBody: {
         type: 'object',
@@ -140,11 +174,8 @@ Use \`POST /api/auth/sign-out\` with a Bearer token to revoke refresh tokens ser
         type: 'object',
         properties: {
           deck: { $ref: '#/components/schemas/Deck' },
-          flashcardsDrafted: {
-            type: 'integer',
-            description: 'Number of flashcards moved to draft',
-            example: 12,
-          },
+          categoriesDrafted: { type: 'integer', example: 3 },
+          flashcardsDrafted: { type: 'integer', example: 12 },
         },
       },
       DeleteDeckResponse: {
@@ -152,6 +183,7 @@ Use \`POST /api/auth/sign-out\` with a Bearer token to revoke refresh tokens ser
         properties: {
           message: { type: 'string', example: 'Deck deleted successfully' },
           deckId: { type: 'string', example: 'abc123' },
+          categoriesDeleted: { type: 'integer', example: 3 },
           flashcardsDeleted: { type: 'integer', example: 12 },
         },
       },
@@ -169,6 +201,21 @@ Use \`POST /api/auth/sign-out\` with a Bearer token to revoke refresh tokens ser
             type: 'array',
             items: { $ref: '#/components/schemas/Flashcard' },
           },
+        },
+      },
+      CategoryListResponse: {
+        type: 'object',
+        properties: {
+          categories: {
+            type: 'array',
+            items: { $ref: '#/components/schemas/Category' },
+          },
+        },
+      },
+      CategoryResponse: {
+        type: 'object',
+        properties: {
+          category: { $ref: '#/components/schemas/Category' },
         },
       },
       FlashcardResponse: {
@@ -614,6 +661,45 @@ Use \`POST /api/auth/sign-out\` with a Bearer token to revoke refresh tokens ser
         },
       },
     },
+    '/api/decks/{deckId}/categories': {
+      get: {
+        tags: ['Public'],
+        summary: 'List published categories in a deck',
+        parameters: [{ name: 'deckId', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          '200': {
+            description: 'Published categories',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/CategoryListResponse' },
+              },
+            },
+          },
+          '404': { description: 'Published deck not found' },
+        },
+      },
+    },
+    '/api/decks/{deckId}/categories/{categoryId}/flashcards': {
+      get: {
+        tags: ['Public'],
+        summary: 'List published flashcards in a category',
+        parameters: [
+          { name: 'deckId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'categoryId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '200': {
+            description: 'Published flashcards in category',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/FlashcardListResponse' },
+              },
+            },
+          },
+          '404': { description: 'Published deck or category not found' },
+        },
+      },
+    },
     '/api/decks/{deckId}/flashcards': {
       get: {
         tags: ['Public'],
@@ -715,12 +801,54 @@ Use \`POST /api/auth/sign-out\` with a Bearer token to revoke refresh tokens ser
         },
       },
     },
+    '/api/admin/decks/{deckId}/categories': {
+      post: {
+        tags: ['Admin'],
+        summary: 'Create a category in a deck',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'deckId', in: 'path', required: true, schema: { type: 'string' } }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/CreateCategoryBody' },
+            },
+          },
+        },
+        responses: {
+          '201': {
+            description: 'Category created',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/CategoryResponse' },
+              },
+            },
+          },
+        },
+      },
+      get: {
+        tags: ['Admin'],
+        summary: 'List all categories in a deck (admin)',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'deckId', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          '200': {
+            description: 'All categories',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/CategoryListResponse' },
+              },
+            },
+          },
+        },
+      },
+    },
     '/api/admin/flashcards': {
       post: {
         tags: ['Admin'],
         summary: 'Create a flashcard',
         description:
-          'Creates a draft flashcard linked to a deck and increments the deck `cardCount`. Requires `role: admin`.',
+          'Creates a draft flashcard in a category. Requires `deckId` and `categoryId`. Increments deck and category `cardCount`.',
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,

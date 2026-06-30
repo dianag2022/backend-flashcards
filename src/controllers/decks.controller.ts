@@ -1,7 +1,12 @@
 import { Request, Response } from 'express';
 import { FieldValue } from 'firebase-admin/firestore';
 import { db } from '../config/firebase';
+import {
+  deleteCategoriesByDeck,
+  draftAllCategoriesInDeck,
+} from '../controllers/categories.controller';
 import { COLLECTIONS } from '../constants/collections';
+import { FIRESTORE_BATCH_LIMIT } from '../constants/firestore';
 import { CreateDeckBody, Deck } from '../types/content.types';
 import { toIsoString } from '../utils/firestore';
 
@@ -123,8 +128,6 @@ export async function publishDeck(req: Request, res: Response): Promise<void> {
   }
 }
 
-const FIRESTORE_BATCH_LIMIT = 500;
-
 async function draftAllFlashcardsInDeck(deckId: string): Promise<number> {
   const snapshot = await db
     .collection(COLLECTIONS.FLASHCARDS)
@@ -174,6 +177,7 @@ export async function draftDeck(req: Request, res: Response): Promise<void> {
       return;
     }
 
+    const categoriesDrafted = await draftAllCategoriesInDeck(id);
     const flashcardsDrafted = await draftAllFlashcardsInDeck(id);
 
     await docRef.update({
@@ -184,7 +188,7 @@ export async function draftDeck(req: Request, res: Response): Promise<void> {
     const updated = await docRef.get();
     const deck = mapDeck(updated.id, updated.data()!);
 
-    res.status(200).json({ deck, flashcardsDrafted });
+    res.status(200).json({ deck, categoriesDrafted, flashcardsDrafted });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     res.status(500).json({
@@ -236,12 +240,14 @@ export async function deleteDeck(req: Request, res: Response): Promise<void> {
     }
 
     const flashcardsDeleted = await deleteFlashcardsByDeck(id);
+    const categoriesDeleted = await deleteCategoriesByDeck(id);
 
     await docRef.delete();
 
     res.status(200).json({
       message: 'Deck deleted successfully',
       deckId: id,
+      categoriesDeleted,
       flashcardsDeleted,
     });
   } catch (error) {

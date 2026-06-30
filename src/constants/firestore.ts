@@ -1,0 +1,1 @@
+export const FIRESTORE_BATCH_LIMIT = 500;
