@@ -409,6 +409,94 @@ export async function signIn(req: Request, res: Response): Promise<void> {
   }
 }
 
+function parseRefreshTokenBody(body: unknown): string | null {
+  if (!body || typeof body !== 'object') {
+    return null;
+  }
+
+  const { refreshToken } = body as Record<string, unknown>;
+
+  if (typeof refreshToken !== 'string' || !refreshToken.trim()) {
+    return null;
+  }
+
+  return refreshToken.trim();
+}
+
+function mapRefreshTokenError(message: string): { status: number; error: string; message: string } {
+  const normalized = message.toUpperCase();
+
+  if (
+    normalized.includes('TOKEN_EXPIRED') ||
+    normalized.includes('INVALID_REFRESH_TOKEN') ||
+    normalized.includes('INVALID_GRANT')
+  ) {
+    return {
+      status: 401,
+      error: 'Unauthorized',
+      message: 'Invalid or expired refresh token. Sign in again.',
+    };
+  }
+
+  if (normalized.includes('USER_DISABLED')) {
+    return { status: 403, error: 'Forbidden', message: 'This account has been disabled' };
+  }
+
+  return { status: 400, error: 'Bad Request', message: 'Failed to refresh token' };
+}
+
+async function buildAuthResponseFromRefresh(
+  data: FirebaseTokenRefreshSuccess
+): Promise<AuthTokenResponse> {
+  const decoded = await auth.verifyIdToken(data.id_token);
+
+  return {
+    uid: data.user_id,
+    email: decoded.email ?? '',
+    idToken: data.id_token,
+    refreshToken: data.refresh_token,
+    expiresIn: data.expires_in,
+    role: decoded.role as string | undefined,
+  };
+}
+
+export async function refreshAuthToken(req: Request, res: Response): Promise<void> {
+  const refreshToken = parseRefreshTokenBody(req.body);
+
+  if (!refreshToken) {
+    res.status(400).json({
+      error: 'Bad Request',
+      message: 'refreshToken is required',
+    });
+    return;
+  }
+
+  let apiKey: string;
+
+  try {
+    apiKey = getFirebaseWebApiKey();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: 'Internal Server Error', message });
+    return;
+  }
+
+  try {
+    const refreshed = await refreshIdToken(refreshToken, apiKey);
+    const authResponse = await buildAuthResponseFromRefresh(refreshed);
+
+    res.status(200).json(authResponse);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    const mapped = mapRefreshTokenError(message);
+
+    res.status(mapped.status).json({
+      error: mapped.error,
+      message: mapped.message,
+    });
+  }
+}
+
 function parseEmailBody(body: unknown): string | null {
   if (!body || typeof body !== 'object') {
     return null;

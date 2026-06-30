@@ -21,6 +21,11 @@ export interface AuthTokenResponse {
 
 export type SignInResponse = AuthTokenResponse;
 export type SignUpResponse = AuthTokenResponse;
+export type RefreshTokenResponse = AuthTokenResponse;
+
+export interface RefreshTokenBody {
+  refreshToken: string;
+}
 
 export interface SignOutResponse {
   message: string;

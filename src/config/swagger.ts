@@ -37,6 +37,7 @@ Use \`POST /api/auth/sign-up\` to register a mobile end-user account (\`role: en
 Use \`POST /api/auth/sign-up-admin\` to register a web admin account (\`role: admin\`) with the server \`ADMIN_SETUP_SECRET\`.
 Use \`POST /api/auth/promote-to-admin\` to upgrade an existing account to admin using email, password, and \`ADMIN_SETUP_SECRET\`.
 Use \`POST /api/auth/sign-in\` with email and password to obtain Firebase tokens from the backend.
+Use \`POST /api/auth/refresh-token\` with a \`refreshToken\` to obtain a new ID token without signing in again.
 Use \`POST /api/auth/forgot-password\` to email a password reset link.
 Use \`POST /api/auth/reset-password\` to set a new password using the \`oobCode\` from that email.
 Use \`POST /api/auth/sign-out\` with a Bearer token to revoke refresh tokens server-side.
@@ -230,6 +231,16 @@ Use \`POST /api/auth/sign-out\` with a Bearer token to revoke refresh tokens ser
           expiresIn: { type: 'string', example: '3600' },
           role: { type: 'string', enum: ['admin', 'end-user'], nullable: true },
         },
+      },
+      RefreshTokenBody: {
+        type: 'object',
+        properties: {
+          refreshToken: {
+            type: 'string',
+            description: 'Refresh token returned from sign-in or sign-up',
+          },
+        },
+        required: ['refreshToken'],
       },
       SignOutResponse: {
         type: 'object',
@@ -447,6 +458,35 @@ Use \`POST /api/auth/sign-out\` with a Bearer token to revoke refresh tokens ser
               },
             },
           },
+        },
+      },
+    },
+    '/api/auth/refresh-token': {
+      post: {
+        tags: ['Auth'],
+        summary: 'Refresh ID token',
+        description:
+          'Exchanges a Firebase refresh token for a new ID token and refresh token. Use when the ID token expires (~1 hour).',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/RefreshTokenBody' },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: 'Token refreshed successfully',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/SignInResponse' },
+              },
+            },
+          },
+          '400': { description: 'Invalid request body' },
+          '401': { description: 'Invalid or expired refresh token' },
+          '403': { description: 'Account disabled' },
         },
       },
     },
