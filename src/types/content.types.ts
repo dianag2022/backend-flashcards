@@ -34,6 +34,11 @@ export interface CreateDeckBody {
   description: string;
 }
 
+export interface UpdateDeckBody {
+  title: string;
+  description: string;
+}
+
 export interface CreateCategoryBody {
   title: string;
   description: string;

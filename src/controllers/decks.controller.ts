@@ -7,7 +7,7 @@ import {
 } from '../controllers/categories.controller';
 import { COLLECTIONS } from '../constants/collections';
 import { FIRESTORE_BATCH_LIMIT } from '../constants/firestore';
-import { CreateDeckBody, Deck } from '../types/content.types';
+import { CreateDeckBody, Deck, UpdateDeckBody } from '../types/content.types';
 import { toIsoString } from '../utils/firestore';
 
 function mapDeck(id: string, data: FirebaseFirestore.DocumentData): Deck {
@@ -21,7 +21,7 @@ function mapDeck(id: string, data: FirebaseFirestore.DocumentData): Deck {
   };
 }
 
-function parseCreateDeckBody(body: unknown): CreateDeckBody | null {
+function parseDeckBody(body: unknown): CreateDeckBody | null {
   if (!body || typeof body !== 'object') {
     return null;
   }
@@ -40,6 +40,14 @@ function parseCreateDeckBody(body: unknown): CreateDeckBody | null {
     title: title.trim(),
     description: description.trim(),
   };
+}
+
+function parseCreateDeckBody(body: unknown): CreateDeckBody | null {
+  return parseDeckBody(body);
+}
+
+function parseUpdateDeckBody(body: unknown): UpdateDeckBody | null {
+  return parseDeckBody(body);
 }
 
 export async function listPublishedDecks(_req: Request, res: Response): Promise<void> {
@@ -91,6 +99,49 @@ export async function createDeck(req: Request, res: Response): Promise<void> {
     res.status(500).json({
       error: 'Internal Server Error',
       message: `Failed to create deck: ${message}`,
+    });
+  }
+}
+
+export async function updateDeck(req: Request, res: Response): Promise<void> {
+  const id = String(req.params.id);
+  const payload = parseUpdateDeckBody(req.body);
+
+  if (!payload) {
+    res.status(400).json({
+      error: 'Bad Request',
+      message: 'title (non-empty string) and description (string) are required',
+    });
+    return;
+  }
+
+  try {
+    const docRef = db.collection(COLLECTIONS.DECKS).doc(id);
+    const existing = await docRef.get();
+
+    if (!existing.exists) {
+      res.status(404).json({
+        error: 'Not Found',
+        message: `Deck not found: ${id}`,
+      });
+      return;
+    }
+
+    await docRef.update({
+      title: payload.title,
+      description: payload.description,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    const updated = await docRef.get();
+    const deck = mapDeck(updated.id, updated.data()!);
+
+    res.status(200).json({ deck });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: `Failed to update deck: ${message}`,
     });
   }
 }

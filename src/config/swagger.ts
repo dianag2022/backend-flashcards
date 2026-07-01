@@ -115,6 +115,14 @@ Use \`POST /api/auth/sign-out\` with a Bearer token to revoke refresh tokens ser
         },
         required: ['title', 'description'],
       },
+      UpdateDeckBody: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', example: 'Cognitive Psychology' },
+          description: { type: 'string', example: 'Core concepts and definitions' },
+        },
+        required: ['title', 'description'],
+      },
       CreateCategoryBody: {
         type: 'object',
         properties: {
@@ -1143,6 +1151,45 @@ Use \`POST /api/auth/sign-out\` with a Bearer token to revoke refresh tokens ser
       },
     },
     '/api/admin/decks/{id}': {
+      put: {
+        tags: ['Admin'],
+        summary: 'Update a deck',
+        description:
+          'Updates a deck `title` and `description`. Does not change `status` or `cardCount`. Requires `role: admin`.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' },
+            description: 'Firestore document ID of the deck',
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/UpdateDeckBody' },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: 'Deck updated',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/DeckResponse' },
+              },
+            },
+          },
+          '400': { description: 'Invalid request body' },
+          '401': { description: 'Unauthorized' },
+          '403': { description: 'Forbidden' },
+          '404': { description: 'Deck not found' },
+          '500': { description: 'Server error' },
+        },
+      },
       delete: {
         tags: ['Admin'],
         summary: 'Delete a deck',

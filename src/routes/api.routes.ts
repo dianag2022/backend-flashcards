@@ -8,7 +8,7 @@ import {
   listPublishedCategoriesByDeck,
   publishCategories,
 } from '../controllers/categories.controller';
-import { createDeck, deleteDeck, draftDeck, listPublishedDecks, publishDeck } from '../controllers/decks.controller';
+import { createDeck, deleteDeck, draftDeck, listPublishedDecks, publishDeck, updateDeck } from '../controllers/decks.controller';
 import {
   createFlashcard,
   deleteFlashcard,
@@ -62,6 +62,7 @@ router.put(
 
 router.put('/admin/decks/:id/publish', checkAuth('admin'), publishDeck);
 router.put('/admin/decks/:id/draft', checkAuth('admin'), draftDeck);
+router.put('/admin/decks/:id', checkAuth('admin'), updateDeck);
 router.delete('/admin/decks/:id', checkAuth('admin'), deleteDeck);
 
 export default router;
