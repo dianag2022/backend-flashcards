@@ -752,6 +752,36 @@ Use \`POST /api/auth/sign-out\` with a Bearer token to revoke refresh tokens ser
       },
     },
     '/api/admin/decks': {
+      get: {
+        tags: ['Admin'],
+        summary: 'List decks (admin)',
+        description:
+          'Returns all decks (draft and published). Optionally filter with `?status=draft` or `?status=published`. Requires `role: admin`.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'status',
+            in: 'query',
+            required: false,
+            schema: { type: 'string', enum: ['draft', 'published'] },
+            description: 'Filter decks by status. Omit to return all decks.',
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'List of decks',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/DeckListResponse' },
+              },
+            },
+          },
+          '400': { description: 'Invalid status query param' },
+          '401': { description: 'Unauthorized' },
+          '403': { description: 'Forbidden' },
+          '500': { description: 'Server error' },
+        },
+      },
       post: {
         tags: ['Admin'],
         summary: 'Create a new deck',

@@ -69,6 +69,41 @@ export async function listPublishedDecks(_req: Request, res: Response): Promise<
   }
 }
 
+export async function listAdminDecks(req: Request, res: Response): Promise<void> {
+  const statusParam = req.query.status;
+
+  if (
+    statusParam !== undefined &&
+    statusParam !== 'draft' &&
+    statusParam !== 'published'
+  ) {
+    res.status(400).json({
+      error: 'Bad Request',
+      message: 'status query param must be "draft" or "published" when provided',
+    });
+    return;
+  }
+
+  try {
+    let query: FirebaseFirestore.Query = db.collection(COLLECTIONS.DECKS);
+
+    if (statusParam === 'draft' || statusParam === 'published') {
+      query = query.where('status', '==', statusParam);
+    }
+
+    const snapshot = await query.get();
+    const decks = snapshot.docs.map((doc) => mapDeck(doc.id, doc.data()));
+
+    res.status(200).json({ decks });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: `Failed to fetch decks: ${message}`,
+    });
+  }
+}
+
 export async function createDeck(req: Request, res: Response): Promise<void> {
   const payload = parseCreateDeckBody(req.body);
 

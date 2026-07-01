@@ -8,7 +8,7 @@ import {
   listPublishedCategoriesByDeck,
   publishCategories,
 } from '../controllers/categories.controller';
-import { createDeck, deleteDeck, draftDeck, listPublishedDecks, publishDeck, updateDeck } from '../controllers/decks.controller';
+import { createDeck, deleteDeck, draftDeck, listAdminDecks, listPublishedDecks, publishDeck, updateDeck } from '../controllers/decks.controller';
 import {
   createFlashcard,
   deleteFlashcard,
@@ -31,6 +31,7 @@ router.get('/decks/:deckId/categories/:categoryId/flashcards', listPublishedFlas
 router.get('/decks/:deckId/flashcards', listPublishedFlashcardsByDeck);
 
 router.post('/admin/decks', checkAuth('admin'), createDeck);
+router.get('/admin/decks', checkAuth('admin'), listAdminDecks);
 router.post('/admin/flashcards', checkAuth('admin'), createFlashcard);
 router.delete('/admin/flashcards/:id', checkAuth('admin'), deleteFlashcard);
 
