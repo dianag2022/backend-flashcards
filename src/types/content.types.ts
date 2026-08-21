@@ -87,3 +87,8 @@ export interface DraftCategoryResponse {
   category: Category;
   flashcardsDrafted: number;
 }
+
+export interface PublishCategoryResponse {
+  category: Category;
+  flashcardsPublished: number;
+}

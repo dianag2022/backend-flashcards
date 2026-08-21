@@ -7,6 +7,7 @@ import {
   listAdminCategoriesByDeck,
   listPublishedCategoriesByDeck,
   publishCategories,
+  publishCategory,
 } from '../controllers/categories.controller';
 import { createDeck, deleteDeck, draftDeck, listAdminDecks, listPublishedDecks, publishDeck, updateDeck } from '../controllers/decks.controller';
 import {
@@ -60,6 +61,7 @@ router.post('/admin/decks/:deckId/categories', checkAuth('admin'), createCategor
 router.get('/admin/decks/:deckId/categories', checkAuth('admin'), listAdminCategoriesByDeck);
 router.put('/admin/decks/:deckId/categories/publish', checkAuth('admin'), publishCategories);
 router.put('/admin/decks/:deckId/categories/draft', checkAuth('admin'), draftCategories);
+router.put('/admin/decks/:deckId/categories/:categoryId/publish', checkAuth('admin'), publishCategory);
 router.put('/admin/decks/:deckId/categories/:categoryId/draft', checkAuth('admin'), draftCategory);
 router.delete('/admin/decks/:deckId/categories/:categoryId', checkAuth('admin'), deleteCategory);
 

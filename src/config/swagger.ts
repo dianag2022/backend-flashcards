@@ -205,6 +205,22 @@ Use \`POST /api/auth/sign-out\` with a Bearer token to revoke refresh tokens ser
         },
         required: ['message', 'categoryId', 'flashcardsDeleted'],
       },
+      PublishCategoryResponse: {
+        type: 'object',
+        properties: {
+          category: { $ref: '#/components/schemas/Category' },
+          flashcardsPublished: { type: 'integer', example: 5 },
+        },
+        required: ['category', 'flashcardsPublished'],
+      },
+      DraftCategoryResponse: {
+        type: 'object',
+        properties: {
+          category: { $ref: '#/components/schemas/Category' },
+          flashcardsDrafted: { type: 'integer', example: 5 },
+        },
+        required: ['category', 'flashcardsDrafted'],
+      },
       DeleteFlashcardResponse: {
         type: 'object',
         properties: {
@@ -1106,6 +1122,45 @@ Use \`POST /api/auth/sign-out\` with a Bearer token to revoke refresh tokens ser
               },
             },
           },
+        },
+      },
+    },
+    '/api/admin/decks/{deckId}/categories/{categoryId}/publish': {
+      put: {
+        tags: ['Admin'],
+        summary: 'Publish a category and its flashcards',
+        description:
+          'Sets the category `status` to `published` and publishes every flashcard in that category. Mobile clients only see the category when the parent deck is also published. Requires `role: admin`.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'deckId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' },
+            description: 'Firestore document ID of the deck',
+          },
+          {
+            name: 'categoryId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' },
+            description: 'Firestore document ID of the category',
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'Category and its flashcards published',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/PublishCategoryResponse' },
+              },
+            },
+          },
+          '401': { description: 'Unauthorized' },
+          '403': { description: 'Forbidden' },
+          '404': { description: 'Deck or category not found' },
+          '500': { description: 'Server error' },
         },
       },
     },

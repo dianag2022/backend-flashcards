@@ -8,6 +8,7 @@ import {
   CreateCategoryBody,
   DeleteCategoryResponse,
   DraftCategoryResponse,
+  PublishCategoryResponse,
 } from '../types/content.types';
 import { getDeckOrRespond } from '../utils/deckHelpers';
 import { toIsoString } from '../utils/firestore';
@@ -67,7 +68,10 @@ function parseCategoryIdsBody(body: unknown): string[] | null {
   return [...new Set(ids.map((id) => id.trim()))];
 }
 
-async function draftAllFlashcardsInCategory(categoryId: string): Promise<number> {
+async function setAllFlashcardsStatusInCategory(
+  categoryId: string,
+  status: 'draft' | 'published'
+): Promise<number> {
   const snapshot = await db
     .collection(COLLECTIONS.FLASHCARDS)
     .where('categoryId', '==', categoryId)
@@ -77,7 +81,7 @@ async function draftAllFlashcardsInCategory(categoryId: string): Promise<number>
     return 0;
   }
 
-  let drafted = 0;
+  let updatedCount = 0;
 
   for (let i = 0; i < snapshot.docs.length; i += FIRESTORE_BATCH_LIMIT) {
     const chunk = snapshot.docs.slice(i, i + FIRESTORE_BATCH_LIMIT);
@@ -85,9 +89,9 @@ async function draftAllFlashcardsInCategory(categoryId: string): Promise<number>
     let batchOps = 0;
 
     chunk.forEach((doc) => {
-      if (doc.data().status !== 'draft') {
-        batch.update(doc.ref, { status: 'draft' });
-        drafted += 1;
+      if (doc.data().status !== status) {
+        batch.update(doc.ref, { status });
+        updatedCount += 1;
         batchOps += 1;
       }
     });
@@ -97,7 +101,7 @@ async function draftAllFlashcardsInCategory(categoryId: string): Promise<number>
     }
   }
 
-  return drafted;
+  return updatedCount;
 }
 
 export async function deleteFlashcardsByCategory(categoryId: string): Promise<number> {
@@ -351,8 +355,21 @@ export async function draftCategories(req: Request, res: Response): Promise<void
 }
 
 export async function draftCategory(req: Request, res: Response): Promise<void> {
+  await updateCategoryAndFlashcardsStatus(req, res, 'draft');
+}
+
+export async function publishCategory(req: Request, res: Response): Promise<void> {
+  await updateCategoryAndFlashcardsStatus(req, res, 'published');
+}
+
+async function updateCategoryAndFlashcardsStatus(
+  req: Request,
+  res: Response,
+  status: 'draft' | 'published'
+): Promise<void> {
   const deckId = String(req.params.deckId);
   const categoryId = String(req.params.categoryId);
+  const action = status === 'published' ? 'publish' : 'draft';
 
   try {
     if (!(await getDeckOrRespond(deckId, res))) {
@@ -370,24 +387,34 @@ export async function draftCategory(req: Request, res: Response): Promise<void> 
       return;
     }
 
-    const flashcardsDrafted = await draftAllFlashcardsInCategory(categoryId);
+    const flashcardsUpdated = await setAllFlashcardsStatusInCategory(categoryId, status);
     const now = FieldValue.serverTimestamp();
 
-    await categoryRef.update({ status: 'draft', updatedAt: now });
+    await categoryRef.update({ status, updatedAt: now });
     await db.collection(COLLECTIONS.DECKS).doc(deckId).update({ updatedAt: now });
 
     const updated = await categoryRef.get();
-    const response: DraftCategoryResponse = {
-      category: mapCategory(updated.id, updated.data()!),
-      flashcardsDrafted,
-    };
+    const category = mapCategory(updated.id, updated.data()!);
 
+    if (status === 'published') {
+      const response: PublishCategoryResponse = {
+        category,
+        flashcardsPublished: flashcardsUpdated,
+      };
+      res.status(200).json(response);
+      return;
+    }
+
+    const response: DraftCategoryResponse = {
+      category,
+      flashcardsDrafted: flashcardsUpdated,
+    };
     res.status(200).json(response);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     res.status(500).json({
       error: 'Internal Server Error',
-      message: `Failed to draft category: ${message}`,
+      message: `Failed to ${action} category: ${message}`,
     });
   }
 }
