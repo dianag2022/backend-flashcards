@@ -195,6 +195,15 @@ Use \`POST /api/auth/sign-out\` with a Bearer token to revoke refresh tokens ser
           flashcardsDeleted: { type: 'integer', example: 12 },
         },
       },
+      DeleteCategoryResponse: {
+        type: 'object',
+        properties: {
+          message: { type: 'string', example: 'Category deleted successfully' },
+          categoryId: { type: 'string', example: 'cat789' },
+          flashcardsDeleted: { type: 'integer', example: 5 },
+        },
+        required: ['message', 'categoryId', 'flashcardsDeleted'],
+      },
       DeleteFlashcardResponse: {
         type: 'object',
         properties: {
@@ -878,6 +887,45 @@ Use \`POST /api/auth/sign-out\` with a Bearer token to revoke refresh tokens ser
               },
             },
           },
+        },
+      },
+    },
+    '/api/admin/decks/{deckId}/categories/{categoryId}': {
+      delete: {
+        tags: ['Admin'],
+        summary: 'Delete a category',
+        description:
+          'Permanently deletes a category and all flashcards belonging to it. Decrements the parent deck `cardCount`. Requires `role: admin`.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'deckId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' },
+            description: 'Firestore document ID of the deck',
+          },
+          {
+            name: 'categoryId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' },
+            description: 'Firestore document ID of the category',
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'Category and flashcards deleted',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/DeleteCategoryResponse' },
+              },
+            },
+          },
+          '401': { description: 'Unauthorized' },
+          '403': { description: 'Forbidden' },
+          '404': { description: 'Deck or category not found' },
+          '500': { description: 'Server error' },
         },
       },
     },

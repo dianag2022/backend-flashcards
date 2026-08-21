@@ -3,7 +3,12 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { db } from '../config/firebase';
 import { COLLECTIONS } from '../constants/collections';
 import { FIRESTORE_BATCH_LIMIT } from '../constants/firestore';
-import { Category, CreateCategoryBody, DraftCategoryResponse } from '../types/content.types';
+import {
+  Category,
+  CreateCategoryBody,
+  DeleteCategoryResponse,
+  DraftCategoryResponse,
+} from '../types/content.types';
 import { getDeckOrRespond } from '../utils/deckHelpers';
 import { toIsoString } from '../utils/firestore';
 
@@ -417,11 +422,13 @@ export async function deleteCategory(req: Request, res: Response): Promise<void>
       updatedAt: now,
     });
 
-    res.status(200).json({
+    const response: DeleteCategoryResponse = {
       message: 'Category deleted successfully',
       categoryId,
       flashcardsDeleted,
-    });
+    };
+
+    res.status(200).json(response);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     res.status(500).json({
