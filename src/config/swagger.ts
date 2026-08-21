@@ -1164,6 +1164,45 @@ Use \`POST /api/auth/sign-out\` with a Bearer token to revoke refresh tokens ser
         },
       },
     },
+    '/api/admin/decks/{deckId}/categories/{categoryId}/draft': {
+      put: {
+        tags: ['Admin'],
+        summary: 'Move a category and its flashcards to draft',
+        description:
+          'Sets the category `status` to `draft` and moves every flashcard in that category to draft. Removes the category from mobile clients. Requires `role: admin`.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'deckId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' },
+            description: 'Firestore document ID of the deck',
+          },
+          {
+            name: 'categoryId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' },
+            description: 'Firestore document ID of the category',
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'Category and its flashcards moved to draft',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/DraftCategoryResponse' },
+              },
+            },
+          },
+          '401': { description: 'Unauthorized' },
+          '403': { description: 'Forbidden' },
+          '404': { description: 'Deck or category not found' },
+          '500': { description: 'Server error' },
+        },
+      },
+    },
     '/api/admin/decks/{deckId}/categories/{categoryId}': {
       delete: {
         tags: ['Admin'],
