@@ -21,6 +21,13 @@ import {
   publishFlashcards,
   publishFlashcardsByCategory,
 } from '../controllers/flashcards.controller';
+import {
+  listReinforcementCardsByCategory,
+  listReinforcementCardsByDeck,
+  recordCardAnswer,
+  resetProgressByCategory,
+  resetProgressByDeck,
+} from '../controllers/progress.controller';
 import { checkAuth } from '../middlewares/authMiddleware';
 
 const router = Router();
@@ -29,6 +36,20 @@ router.get('/decks', listPublishedDecks);
 router.get('/decks/:deckId/categories', listPublishedCategoriesByDeck);
 router.get('/decks/:deckId/categories/:categoryId/flashcards', listPublishedFlashcardsByCategory);
 router.get('/decks/:deckId/flashcards', listPublishedFlashcardsByDeck);
+
+router.post('/progress/cards/:cardId', checkAuth(), recordCardAnswer);
+router.get(
+  '/progress/decks/:deckId/categories/:categoryId/reinforcement',
+  checkAuth(),
+  listReinforcementCardsByCategory
+);
+router.get('/progress/decks/:deckId/reinforcement', checkAuth(), listReinforcementCardsByDeck);
+router.delete(
+  '/progress/decks/:deckId/categories/:categoryId',
+  checkAuth(),
+  resetProgressByCategory
+);
+router.delete('/progress/decks/:deckId', checkAuth(), resetProgressByDeck);
 
 router.post('/admin/decks', checkAuth('admin'), createDeck);
 router.get('/admin/decks', checkAuth('admin'), listAdminDecks);

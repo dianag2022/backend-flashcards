@@ -59,3 +59,17 @@ export function checkAuth(requiredRole?: UserRole): RequestHandler {
     next();
   };
 }
+
+export function getUserIdOrRespond(req: Request, res: Response): string | null {
+  const uid = (req as AuthenticatedRequest).user?.uid;
+
+  if (!uid) {
+    res.status(401).json({
+      error: 'Unauthorized',
+      message: 'Authenticated user is missing uid',
+    });
+    return null;
+  }
+
+  return uid;
+}

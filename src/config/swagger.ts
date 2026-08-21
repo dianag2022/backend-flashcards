@@ -53,6 +53,7 @@ Use \`POST /api/auth/sign-out\` with a Bearer token to revoke refresh tokens ser
     { name: 'Health', description: 'Service health checks' },
     { name: 'Auth', description: 'Firebase authentication — sign in and sign out' },
     { name: 'Public', description: 'Read-only endpoints for mobile / public clients' },
+    { name: 'Study', description: 'Adaptive study progress — requires a signed-in user' },
     { name: 'Admin', description: 'Write operations — requires admin role' },
   ],
   components: {
@@ -240,6 +241,71 @@ Use \`POST /api/auth/sign-out\` with a Bearer token to revoke refresh tokens ser
         properties: {
           flashcard: { $ref: '#/components/schemas/Flashcard' },
         },
+      },
+      CardAnswerResult: {
+        type: 'string',
+        enum: ['correct', 'incorrect'],
+      },
+      RecordCardAnswerBody: {
+        type: 'object',
+        properties: {
+          result: { $ref: '#/components/schemas/CardAnswerResult' },
+        },
+        required: ['result'],
+      },
+      UserCardProgress: {
+        type: 'object',
+        properties: {
+          cardId: { type: 'string', example: 'card456' },
+          deckId: { type: 'string', example: 'abc123' },
+          categoryId: { type: 'string', example: 'cat789' },
+          lastResult: { $ref: '#/components/schemas/CardAnswerResult' },
+          correctStreak: { type: 'integer', example: 2 },
+          lastAttemptAt: { type: 'string', format: 'date-time' },
+          mastered: { type: 'boolean', example: false },
+        },
+        required: [
+          'cardId',
+          'deckId',
+          'categoryId',
+          'lastResult',
+          'correctStreak',
+          'lastAttemptAt',
+          'mastered',
+        ],
+      },
+      UserCardProgressResponse: {
+        type: 'object',
+        properties: {
+          progress: { $ref: '#/components/schemas/UserCardProgress' },
+        },
+      },
+      ReinforcementCard: {
+        type: 'object',
+        properties: {
+          flashcard: { $ref: '#/components/schemas/Flashcard' },
+          progress: { $ref: '#/components/schemas/UserCardProgress' },
+        },
+        required: ['flashcard', 'progress'],
+      },
+      ReinforcementCardsResponse: {
+        type: 'object',
+        properties: {
+          cards: {
+            type: 'array',
+            items: { $ref: '#/components/schemas/ReinforcementCard' },
+          },
+        },
+      },
+      ResetProgressResponse: {
+        type: 'object',
+        properties: {
+          message: { type: 'string', example: 'Progress reset successfully' },
+          deckId: { type: 'string', example: 'abc123' },
+          categoryId: { type: 'string', example: 'cat789' },
+          progressDeleted: { type: 'integer', example: 5 },
+        },
+        required: ['message', 'deckId', 'progressDeleted'],
       },
       HealthResponse: {
         type: 'object',
@@ -757,6 +823,159 @@ Use \`POST /api/auth/sign-out\` with a Bearer token to revoke refresh tokens ser
               },
             },
           },
+        },
+      },
+    },
+    '/api/progress/cards/{cardId}': {
+      post: {
+        tags: ['Study'],
+        summary: 'Record a flashcard answer',
+        description:
+          'Records `correct` or `incorrect` for the signed-in user and card. Stores progress at `user_card_progress/{userId}/cards/{cardId}`. A correct answer increments `correctStreak`; `mastered` becomes `true` after 3 consecutive correct answers. An incorrect answer resets `correctStreak` to 0 and `mastered` to `false`.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'cardId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' },
+            description: 'Firestore document ID of the flashcard',
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/RecordCardAnswerBody' },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: 'Progress updated',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/UserCardProgressResponse' },
+              },
+            },
+          },
+          '400': { description: 'Invalid result' },
+          '401': { description: 'Unauthorized' },
+          '404': { description: 'Published flashcard not found' },
+          '500': { description: 'Server error' },
+        },
+      },
+    },
+    '/api/progress/decks/{deckId}/reinforcement': {
+      get: {
+        tags: ['Study'],
+        summary: 'List cards needing reinforcement in a deck',
+        description:
+          'Returns published flashcards for the signed-in user in this deck where progress `mastered` is `false`. Incorrect cards are listed first, then oldest attempts. Use `GET /api/decks/{deckId}/categories` for subtopics.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'deckId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' },
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'Cards needing reinforcement',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ReinforcementCardsResponse' },
+              },
+            },
+          },
+          '401': { description: 'Unauthorized' },
+          '404': { description: 'Published deck not found' },
+          '500': { description: 'Server error' },
+        },
+      },
+    },
+    '/api/progress/decks/{deckId}/categories/{categoryId}/reinforcement': {
+      get: {
+        tags: ['Study'],
+        summary: 'List cards needing reinforcement in a category',
+        description:
+          'Same as deck reinforcement, scoped to one published category (subtopic).',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'deckId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'categoryId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '200': {
+            description: 'Cards needing reinforcement in the category',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ReinforcementCardsResponse' },
+              },
+            },
+          },
+          '401': { description: 'Unauthorized' },
+          '404': { description: 'Published deck or category not found' },
+          '500': { description: 'Server error' },
+        },
+      },
+    },
+    '/api/progress/decks/{deckId}': {
+      delete: {
+        tags: ['Study'],
+        summary: 'Reset progress for a deck',
+        description:
+          'Deletes the signed-in user\'s card progress for every card in the deck. Does not delete flashcards.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'deckId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' },
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'Progress reset',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ResetProgressResponse' },
+              },
+            },
+          },
+          '401': { description: 'Unauthorized' },
+          '404': { description: 'Deck not found' },
+          '500': { description: 'Server error' },
+        },
+      },
+    },
+    '/api/progress/decks/{deckId}/categories/{categoryId}': {
+      delete: {
+        tags: ['Study'],
+        summary: 'Reset progress for a category',
+        description:
+          'Deletes the signed-in user\'s card progress for cards in this category. Does not delete flashcards.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'deckId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'categoryId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '200': {
+            description: 'Category progress reset',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ResetProgressResponse' },
+              },
+            },
+          },
+          '400': { description: 'Category does not belong to the deck' },
+          '401': { description: 'Unauthorized' },
+          '404': { description: 'Deck or category not found' },
+          '500': { description: 'Server error' },
         },
       },
     },

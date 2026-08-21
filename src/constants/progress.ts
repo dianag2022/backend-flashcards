@@ -1,0 +1,1 @@
+export const MASTERED_CORRECT_STREAK = 3;
