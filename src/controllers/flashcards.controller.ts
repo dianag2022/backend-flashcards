@@ -442,10 +442,6 @@ export async function deleteFlashcard(req: Request, res: Response): Promise<void
     }
 
     const deckRef = db.collection(COLLECTIONS.DECKS).doc(deckId);
-    const categoryRef =
-      typeof categoryId === 'string' && categoryId.trim()
-        ? db.collection(COLLECTIONS.CATEGORIES).doc(categoryId.trim())
-        : null;
     const deck = await deckRef.get();
 
     if (!deck.exists) {
@@ -456,6 +452,12 @@ export async function deleteFlashcard(req: Request, res: Response): Promise<void
       return;
     }
 
+    const categoryRef =
+      typeof categoryId === 'string' && categoryId.trim()
+        ? db.collection(COLLECTIONS.CATEGORIES).doc(categoryId.trim())
+        : null;
+    const category = categoryRef ? await categoryRef.get() : null;
+
     const now = FieldValue.serverTimestamp();
 
     await db.runTransaction(async (transaction) => {
@@ -465,14 +467,11 @@ export async function deleteFlashcard(req: Request, res: Response): Promise<void
         updatedAt: now,
       });
 
-      if (categoryRef) {
-        const category = await transaction.get(categoryRef);
-        if (category.exists) {
-          transaction.update(categoryRef, {
-            cardCount: FieldValue.increment(-1),
-            updatedAt: now,
-          });
-        }
+      if (categoryRef && category?.exists) {
+        transaction.update(categoryRef, {
+          cardCount: FieldValue.increment(-1),
+          updatedAt: now,
+        });
       }
     });
 
