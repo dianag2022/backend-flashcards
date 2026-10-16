@@ -13,6 +13,7 @@ import { createDeck, deleteDeck, draftDeck, listAdminDecks, listPublishedDecks, 
 import {
   createFlashcard,
   deleteFlashcard,
+  updateFlashcard,
   draftFlashcards,
   draftFlashcardsByCategory,
   listAdminFlashcardsByCategory,
@@ -55,6 +56,7 @@ router.delete('/progress/decks/:deckId', checkAuth(), resetProgressByDeck);
 router.post('/admin/decks', checkAuth('admin'), createDeck);
 router.get('/admin/decks', checkAuth('admin'), listAdminDecks);
 router.post('/admin/flashcards', checkAuth('admin'), createFlashcard);
+router.put('/admin/flashcards/:id', checkAuth('admin'), updateFlashcard);
 router.delete('/admin/flashcards/:id', checkAuth('admin'), deleteFlashcard);
 
 router.post('/admin/decks/:deckId/categories', checkAuth('admin'), createCategory);

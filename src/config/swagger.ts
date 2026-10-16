@@ -76,6 +76,13 @@ Use \`POST /api/auth/sign-out\` with a Bearer token to revoke refresh tokens ser
           id: { type: 'string', example: 'abc123' },
           title: { type: 'string', example: 'Cognitive Psychology' },
           description: { type: 'string', example: 'Core concepts and definitions' },
+          emoji: {
+            type: 'string',
+            example: '🧠',
+            description:
+              'UTF-8 emoji for the deck. Optional on older documents; mobile should fall back to 🧠. Max ~16 code points.',
+            maxLength: 16,
+          },
           status: { $ref: '#/components/schemas/ContentStatus' },
           cardCount: { type: 'integer', example: 12 },
           updatedAt: { type: 'string', format: 'date-time' },
@@ -113,16 +120,18 @@ Use \`POST /api/auth/sign-out\` with a Bearer token to revoke refresh tokens ser
         properties: {
           title: { type: 'string', example: 'Cognitive Psychology' },
           description: { type: 'string', example: 'Core concepts and definitions' },
+          emoji: { type: 'string', example: '🧠', maxLength: 16 },
         },
-        required: ['title', 'description'],
+        required: ['title', 'description', 'emoji'],
       },
       UpdateDeckBody: {
         type: 'object',
         properties: {
           title: { type: 'string', example: 'Cognitive Psychology' },
           description: { type: 'string', example: 'Core concepts and definitions' },
+          emoji: { type: 'string', example: '🧠', maxLength: 16 },
         },
-        required: ['title', 'description'],
+        required: ['title', 'description', 'emoji'],
       },
       CreateCategoryBody: {
         type: 'object',
@@ -141,6 +150,14 @@ Use \`POST /api/auth/sign-out\` with a Bearer token to revoke refresh tokens ser
           back: { type: 'string', example: 'A limited-capacity system for temporary information storage.' },
         },
         required: ['deckId', 'categoryId', 'front', 'back'],
+      },
+      UpdateFlashcardBody: {
+        type: 'object',
+        properties: {
+          front: { type: 'string', example: 'What is working memory?' },
+          back: { type: 'string', example: 'A limited-capacity system for temporary information storage.' },
+        },
+        required: ['front', 'back'],
       },
       UpdateCategoriesStatusBody: {
         type: 'object',
@@ -1029,7 +1046,8 @@ Use \`POST /api/auth/sign-out\` with a Bearer token to revoke refresh tokens ser
       post: {
         tags: ['Admin'],
         summary: 'Create a new deck',
-        description: 'Creates a deck with `status: draft` and `cardCount: 0`. Requires `role: admin` custom claim.',
+        description:
+          'Creates a deck with `status: draft`, `cardCount: 0`, and a required `emoji`. Requires `role: admin` custom claim.',
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -1310,6 +1328,45 @@ Use \`POST /api/auth/sign-out\` with a Bearer token to revoke refresh tokens ser
       },
     },
     '/api/admin/flashcards/{id}': {
+      put: {
+        tags: ['Admin'],
+        summary: 'Update a flashcard',
+        description:
+          'Updates a flashcard `front` and `back`. Does not change `status`, `deckId`, or `categoryId`. Requires `role: admin`.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' },
+            description: 'Firestore document ID of the flashcard',
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/UpdateFlashcardBody' },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: 'Flashcard updated',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/FlashcardResponse' },
+              },
+            },
+          },
+          '400': { description: 'Invalid request body' },
+          '401': { description: 'Unauthorized' },
+          '403': { description: 'Forbidden' },
+          '404': { description: 'Flashcard not found' },
+          '500': { description: 'Server error' },
+        },
+      },
       delete: {
         tags: ['Admin'],
         summary: 'Delete a flashcard',
@@ -1546,7 +1603,7 @@ Use \`POST /api/auth/sign-out\` with a Bearer token to revoke refresh tokens ser
         tags: ['Admin'],
         summary: 'Update a deck',
         description:
-          'Updates a deck `title` and `description`. Does not change `status` or `cardCount`. Requires `role: admin`.',
+          'Updates a deck `title`, `description`, and `emoji`. Does not change `status` or `cardCount`. Requires `role: admin`.',
         security: [{ bearerAuth: [] }],
         parameters: [
           {

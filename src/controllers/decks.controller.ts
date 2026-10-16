@@ -10,15 +10,39 @@ import { FIRESTORE_BATCH_LIMIT } from '../constants/firestore';
 import { CreateDeckBody, Deck, UpdateDeckBody } from '../types/content.types';
 import { toIsoString } from '../utils/firestore';
 
+const DECK_EMOJI_MAX_CODE_POINTS = 16;
+const DECK_BODY_ERROR =
+  'title (non-empty string), description (string), and emoji (non-empty string, max 16 code points) are required';
+
 function mapDeck(id: string, data: FirebaseFirestore.DocumentData): Deck {
+  const emoji = typeof data.emoji === 'string' ? data.emoji.trim() : '';
+
   return {
     id,
     title: data.title,
     description: data.description,
+    ...(emoji ? { emoji } : {}),
     status: data.status,
     cardCount: data.cardCount ?? 0,
     updatedAt: toIsoString(data.updatedAt),
   };
+}
+
+function parseEmoji(value: unknown): string | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const emoji = value.trim();
+  if (!emoji) {
+    return null;
+  }
+
+  if (Array.from(emoji).length > DECK_EMOJI_MAX_CODE_POINTS) {
+    return null;
+  }
+
+  return emoji;
 }
 
 function parseDeckBody(body: unknown): CreateDeckBody | null {
@@ -26,7 +50,7 @@ function parseDeckBody(body: unknown): CreateDeckBody | null {
     return null;
   }
 
-  const { title, description } = body as Record<string, unknown>;
+  const { title, description, emoji } = body as Record<string, unknown>;
 
   if (typeof title !== 'string' || !title.trim()) {
     return null;
@@ -36,9 +60,15 @@ function parseDeckBody(body: unknown): CreateDeckBody | null {
     return null;
   }
 
+  const parsedEmoji = parseEmoji(emoji);
+  if (!parsedEmoji) {
+    return null;
+  }
+
   return {
     title: title.trim(),
     description: description.trim(),
+    emoji: parsedEmoji,
   };
 }
 
@@ -110,7 +140,7 @@ export async function createDeck(req: Request, res: Response): Promise<void> {
   if (!payload) {
     res.status(400).json({
       error: 'Bad Request',
-      message: 'title (non-empty string) and description (string) are required',
+      message: DECK_BODY_ERROR,
     });
     return;
   }
@@ -120,6 +150,7 @@ export async function createDeck(req: Request, res: Response): Promise<void> {
     const docRef = await db.collection(COLLECTIONS.DECKS).add({
       title: payload.title,
       description: payload.description,
+      emoji: payload.emoji,
       status: 'draft',
       cardCount: 0,
       updatedAt: now,
@@ -145,7 +176,7 @@ export async function updateDeck(req: Request, res: Response): Promise<void> {
   if (!payload) {
     res.status(400).json({
       error: 'Bad Request',
-      message: 'title (non-empty string) and description (string) are required',
+      message: DECK_BODY_ERROR,
     });
     return;
   }
@@ -165,6 +196,7 @@ export async function updateDeck(req: Request, res: Response): Promise<void> {
     await docRef.update({
       title: payload.title,
       description: payload.description,
+      emoji: payload.emoji,
       updatedAt: FieldValue.serverTimestamp(),
     });
 

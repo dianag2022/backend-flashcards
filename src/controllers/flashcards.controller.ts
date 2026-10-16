@@ -6,6 +6,7 @@ import {
   ContentStatus,
   CreateFlashcardBody,
   Flashcard,
+  UpdateFlashcardBody,
   UpdateFlashcardsStatusBody,
 } from '../types/content.types';
 import { getCategoryOrRespond, getDeckOrRespond } from '../utils/deckHelpers';
@@ -49,6 +50,27 @@ function parseCreateFlashcardBody(body: unknown): CreateFlashcardBody | null {
   return {
     deckId: deckId.trim(),
     categoryId: categoryId.trim(),
+    front: front.trim(),
+    back: back.trim(),
+  };
+}
+
+function parseUpdateFlashcardBody(body: unknown): UpdateFlashcardBody | null {
+  if (!body || typeof body !== 'object') {
+    return null;
+  }
+
+  const { front, back } = body as Record<string, unknown>;
+
+  if (typeof front !== 'string' || !front.trim()) {
+    return null;
+  }
+
+  if (typeof back !== 'string' || !back.trim()) {
+    return null;
+  }
+
+  return {
     front: front.trim(),
     back: back.trim(),
   };
@@ -385,6 +407,64 @@ export async function createFlashcard(req: Request, res: Response): Promise<void
     res.status(500).json({
       error: 'Internal Server Error',
       message: `Failed to create flashcard: ${message}`,
+    });
+  }
+}
+
+export async function updateFlashcard(req: Request, res: Response): Promise<void> {
+  const id = String(req.params.id);
+  const payload = parseUpdateFlashcardBody(req.body);
+
+  if (!payload) {
+    res.status(400).json({
+      error: 'Bad Request',
+      message: 'front and back (non-empty strings) are required',
+    });
+    return;
+  }
+
+  try {
+    const flashcardRef = db.collection(COLLECTIONS.FLASHCARDS).doc(id);
+    const existing = await flashcardRef.get();
+
+    if (!existing.exists) {
+      res.status(404).json({
+        error: 'Not Found',
+        message: `Flashcard not found: ${id}`,
+      });
+      return;
+    }
+
+    const deckId = existing.data()?.deckId;
+    const categoryId = existing.data()?.categoryId;
+    const now = FieldValue.serverTimestamp();
+
+    await flashcardRef.update({
+      front: payload.front,
+      back: payload.back,
+    });
+
+    if (typeof deckId === 'string' && deckId.trim()) {
+      await db.collection(COLLECTIONS.DECKS).doc(deckId.trim()).update({ updatedAt: now });
+    }
+
+    if (typeof categoryId === 'string' && categoryId.trim()) {
+      const categoryRef = db.collection(COLLECTIONS.CATEGORIES).doc(categoryId.trim());
+      const category = await categoryRef.get();
+      if (category.exists) {
+        await categoryRef.update({ updatedAt: now });
+      }
+    }
+
+    const updated = await flashcardRef.get();
+    const flashcard = mapFlashcard(updated.id, updated.data()!);
+
+    res.status(200).json({ flashcard });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: `Failed to update flashcard: ${message}`,
     });
   }
 }
