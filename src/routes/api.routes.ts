@@ -8,8 +8,9 @@ import {
   listPublishedCategoriesByDeck,
   publishCategories,
   publishCategory,
+  updateCategory,
 } from '../controllers/categories.controller';
-import { createDeck, deleteDeck, draftDeck, listAdminDecks, listPublishedDecks, publishDeck, updateDeck } from '../controllers/decks.controller';
+import { createDeck, deleteDeck, draftDeck, listAdminDecks, listPublishedDecks, publishDeck, reorderDecks, updateDeck } from '../controllers/decks.controller';
 import {
   createFlashcard,
   deleteFlashcard,
@@ -65,6 +66,7 @@ router.put('/admin/decks/:deckId/categories/publish', checkAuth('admin'), publis
 router.put('/admin/decks/:deckId/categories/draft', checkAuth('admin'), draftCategories);
 router.put('/admin/decks/:deckId/categories/:categoryId/publish', checkAuth('admin'), publishCategory);
 router.put('/admin/decks/:deckId/categories/:categoryId/draft', checkAuth('admin'), draftCategory);
+router.put('/admin/decks/:deckId/categories/:categoryId', checkAuth('admin'), updateCategory);
 router.delete('/admin/decks/:deckId/categories/:categoryId', checkAuth('admin'), deleteCategory);
 
 router.get('/admin/decks/:deckId/flashcards', checkAuth('admin'), listAdminFlashcardsByDeck);
@@ -86,6 +88,7 @@ router.put(
   draftFlashcardsByCategory
 );
 
+router.put('/admin/decks/reorder', checkAuth('admin'), reorderDecks);
 router.put('/admin/decks/:id/publish', checkAuth('admin'), publishDeck);
 router.put('/admin/decks/:id/draft', checkAuth('admin'), draftDeck);
 router.put('/admin/decks/:id', checkAuth('admin'), updateDeck);

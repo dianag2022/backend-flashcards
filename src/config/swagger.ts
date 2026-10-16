@@ -83,11 +83,17 @@ Use \`POST /api/auth/sign-out\` with a Bearer token to revoke refresh tokens ser
               'UTF-8 emoji for the deck. Optional on older documents; mobile should fall back to 🧠. Max ~16 code points.',
             maxLength: 16,
           },
+          order: {
+            type: 'integer',
+            example: 0,
+            description:
+              'Display order. Lists are sorted by this field ascending. Decks without `order` sort last.',
+          },
           status: { $ref: '#/components/schemas/ContentStatus' },
           cardCount: { type: 'integer', example: 12 },
           updatedAt: { type: 'string', format: 'date-time' },
         },
-        required: ['id', 'title', 'description', 'status', 'cardCount', 'updatedAt'],
+        required: ['id', 'title', 'description', 'order', 'status', 'cardCount', 'updatedAt'],
       },
       Category: {
         type: 'object',
@@ -96,8 +102,18 @@ Use \`POST /api/auth/sign-out\` with a Bearer token to revoke refresh tokens ser
           deckId: { type: 'string', example: 'abc123' },
           title: { type: 'string', example: 'Memory' },
           description: { type: 'string', example: 'Memory systems and processes' },
+          color: {
+            type: 'string',
+            example: '#2eab95',
+            description: 'Hex color for mobile subtopic chips. Optional on older documents.',
+          },
           status: { $ref: '#/components/schemas/ContentStatus' },
           cardCount: { type: 'integer', example: 5 },
+          createdAt: {
+            type: 'string',
+            format: 'date-time',
+            description: 'Set on create and never overwritten. Optional on older documents.',
+          },
           updatedAt: { type: 'string', format: 'date-time' },
         },
         required: ['id', 'deckId', 'title', 'description', 'status', 'cardCount', 'updatedAt'],
@@ -138,8 +154,29 @@ Use \`POST /api/auth/sign-out\` with a Bearer token to revoke refresh tokens ser
         properties: {
           title: { type: 'string', example: 'Memory' },
           description: { type: 'string', example: 'Memory systems and processes' },
+          color: { type: 'string', example: '#2eab95' },
         },
-        required: ['title', 'description'],
+        required: ['title', 'description', 'color'],
+      },
+      UpdateCategoryBody: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', example: 'Memory' },
+          description: { type: 'string', example: 'Memory systems and processes' },
+          color: { type: 'string', example: '#2eab95' },
+        },
+        required: ['title', 'description', 'color'],
+      },
+      ReorderDecksBody: {
+        type: 'object',
+        properties: {
+          orderedIds: {
+            type: 'array',
+            items: { type: 'string' },
+            example: ['deckId1', 'deckId2', 'deckId3'],
+          },
+        },
+        required: ['orderedIds'],
       },
       CreateFlashcardBody: {
         type: 'object',
@@ -756,7 +793,7 @@ Use \`POST /api/auth/sign-out\` with a Bearer token to revoke refresh tokens ser
         tags: ['Public'],
         summary: 'List published decks',
         description:
-          'Returns all decks with `status: published`. Currently public (no auth). Intended for mobile clients.',
+          'Returns all decks with `status: published`, sorted by `order` ascending. Currently public (no auth). Intended for mobile clients.',
         responses: {
           '200': {
             description: 'List of published decks',
@@ -781,6 +818,7 @@ Use \`POST /api/auth/sign-out\` with a Bearer token to revoke refresh tokens ser
       get: {
         tags: ['Public'],
         summary: 'List published categories in a deck',
+        description: 'Returns published categories sorted newest first (`createdAt` descending).',
         parameters: [{ name: 'deckId', in: 'path', required: true, schema: { type: 'string' } }],
         responses: {
           '200': {
@@ -1017,7 +1055,7 @@ Use \`POST /api/auth/sign-out\` with a Bearer token to revoke refresh tokens ser
         tags: ['Admin'],
         summary: 'List decks (admin)',
         description:
-          'Returns all decks (draft and published). Optionally filter with `?status=draft` or `?status=published`. Requires `role: admin`.',
+          'Returns all decks (draft and published), sorted by `order` ascending. Optionally filter with `?status=draft` or `?status=published`. Requires `role: admin`.',
         security: [{ bearerAuth: [] }],
         parameters: [
           {
@@ -1129,6 +1167,7 @@ Use \`POST /api/auth/sign-out\` with a Bearer token to revoke refresh tokens ser
       get: {
         tags: ['Admin'],
         summary: 'List all categories in a deck (admin)',
+        description: 'Returns all categories sorted newest first (`createdAt` descending).',
         security: [{ bearerAuth: [] }],
         parameters: [{ name: 'deckId', in: 'path', required: true, schema: { type: 'string' } }],
         responses: {
@@ -1221,7 +1260,83 @@ Use \`POST /api/auth/sign-out\` with a Bearer token to revoke refresh tokens ser
         },
       },
     },
+    '/api/admin/decks/reorder': {
+      put: {
+        tags: ['Admin'],
+        summary: 'Reorder decks',
+        description:
+          'Writes `order` 0, 1, 2, … in the given `orderedIds` sequence. `GET /api/decks` and `GET /api/admin/decks` return this order. Requires `role: admin`.',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/ReorderDecksBody' },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: 'Decks reordered',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/DeckListResponse' },
+              },
+            },
+          },
+          '400': { description: 'Invalid orderedIds' },
+          '401': { description: 'Unauthorized' },
+          '403': { description: 'Forbidden' },
+          '404': { description: 'One or more decks not found' },
+          '500': { description: 'Server error' },
+        },
+      },
+    },
     '/api/admin/decks/{deckId}/categories/{categoryId}': {
+      put: {
+        tags: ['Admin'],
+        summary: 'Update a category',
+        description:
+          'Updates `title`, `description`, and `color`. Does not change `status`, `createdAt`, or `cardCount`. Requires `role: admin`.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'deckId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' },
+          },
+          {
+            name: 'categoryId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/UpdateCategoryBody' },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: 'Category updated',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/CategoryResponse' },
+              },
+            },
+          },
+          '400': { description: 'Invalid request body' },
+          '401': { description: 'Unauthorized' },
+          '403': { description: 'Forbidden' },
+          '404': { description: 'Deck or category not found' },
+          '500': { description: 'Server error' },
+        },
+      },
       delete: {
         tags: ['Admin'],
         summary: 'Delete a category',

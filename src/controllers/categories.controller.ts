@@ -9,28 +9,56 @@ import {
   DeleteCategoryResponse,
   DraftCategoryResponse,
   PublishCategoryResponse,
+  UpdateCategoryBody,
 } from '../types/content.types';
 import { getDeckOrRespond } from '../utils/deckHelpers';
-import { toIsoString } from '../utils/firestore';
+import { toIsoString, toMillis } from '../utils/firestore';
+
+const HEX_COLOR_PATTERN = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
+const CATEGORY_BODY_ERROR =
+  'title (non-empty string), description (string), and color (hex, e.g. "#2eab95") are required';
 
 function mapCategory(id: string, data: FirebaseFirestore.DocumentData): Category {
+  const color = typeof data.color === 'string' ? data.color.trim() : '';
+  const createdAt = data.createdAt ? toIsoString(data.createdAt) : undefined;
+
   return {
     id,
     deckId: data.deckId,
     title: data.title,
     description: data.description ?? '',
+    ...(color ? { color } : {}),
     status: data.status,
     cardCount: data.cardCount ?? 0,
+    ...(createdAt ? { createdAt } : {}),
     updatedAt: toIsoString(data.updatedAt),
   };
 }
 
-function parseCreateCategoryBody(body: unknown): CreateCategoryBody | null {
+function parseColor(value: unknown): string | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const color = value.trim();
+  if (!HEX_COLOR_PATTERN.test(color)) {
+    return null;
+  }
+
+  if (color.length === 4) {
+    const [, r, g, b] = color;
+    return `#${r}${r}${g}${g}${b}${b}`.toLowerCase();
+  }
+
+  return color.toLowerCase();
+}
+
+function parseCategoryBody(body: unknown): CreateCategoryBody | null {
   if (!body || typeof body !== 'object') {
     return null;
   }
 
-  const { title, description } = body as Record<string, unknown>;
+  const { title, description, color } = body as Record<string, unknown>;
 
   if (typeof title !== 'string' || !title.trim()) {
     return null;
@@ -40,10 +68,38 @@ function parseCreateCategoryBody(body: unknown): CreateCategoryBody | null {
     return null;
   }
 
+  const parsedColor = parseColor(color);
+  if (!parsedColor) {
+    return null;
+  }
+
   return {
     title: title.trim(),
     description: description.trim(),
+    color: parsedColor,
   };
+}
+
+function parseCreateCategoryBody(body: unknown): CreateCategoryBody | null {
+  return parseCategoryBody(body);
+}
+
+function parseUpdateCategoryBody(body: unknown): UpdateCategoryBody | null {
+  return parseCategoryBody(body);
+}
+
+function compareCategoryDocsNewestFirst(
+  a: FirebaseFirestore.QueryDocumentSnapshot,
+  b: FirebaseFirestore.QueryDocumentSnapshot
+): number {
+  const aCreated = toMillis(a.data().createdAt) ?? 0;
+  const bCreated = toMillis(b.data().createdAt) ?? 0;
+
+  if (aCreated !== bCreated) {
+    return bCreated - aCreated;
+  }
+
+  return a.id.localeCompare(b.id);
 }
 
 function parseCategoryIdsBody(body: unknown): string[] | null {
@@ -198,7 +254,10 @@ export async function listPublishedCategoriesByDeck(req: Request, res: Response)
       .where('status', '==', 'published')
       .get();
 
-    const categories = snapshot.docs.map((doc) => mapCategory(doc.id, doc.data()));
+    const categories = snapshot.docs
+      .slice()
+      .sort(compareCategoryDocsNewestFirst)
+      .map((doc) => mapCategory(doc.id, doc.data()));
 
     res.status(200).json({ categories });
   } catch (error) {
@@ -223,7 +282,10 @@ export async function listAdminCategoriesByDeck(req: Request, res: Response): Pr
       .where('deckId', '==', deckId)
       .get();
 
-    const categories = snapshot.docs.map((doc) => mapCategory(doc.id, doc.data()));
+    const categories = snapshot.docs
+      .slice()
+      .sort(compareCategoryDocsNewestFirst)
+      .map((doc) => mapCategory(doc.id, doc.data()));
 
     res.status(200).json({ categories });
   } catch (error) {
@@ -242,7 +304,7 @@ export async function createCategory(req: Request, res: Response): Promise<void>
   if (!payload) {
     res.status(400).json({
       error: 'Bad Request',
-      message: 'title (non-empty string) and description (string) are required',
+      message: CATEGORY_BODY_ERROR,
     });
     return;
   }
@@ -257,8 +319,10 @@ export async function createCategory(req: Request, res: Response): Promise<void>
       deckId,
       title: payload.title,
       description: payload.description,
+      color: payload.color,
       status: 'draft',
       cardCount: 0,
+      createdAt: now,
       updatedAt: now,
     });
 
@@ -342,6 +406,57 @@ async function updateCategoriesStatus(
     res.status(500).json({
       error: 'Internal Server Error',
       message: `Failed to update categories: ${message}`,
+    });
+  }
+}
+
+export async function updateCategory(req: Request, res: Response): Promise<void> {
+  const deckId = String(req.params.deckId);
+  const categoryId = String(req.params.categoryId);
+  const payload = parseUpdateCategoryBody(req.body);
+
+  if (!payload) {
+    res.status(400).json({
+      error: 'Bad Request',
+      message: CATEGORY_BODY_ERROR,
+    });
+    return;
+  }
+
+  try {
+    if (!(await getDeckOrRespond(deckId, res))) {
+      return;
+    }
+
+    const categoryRef = db.collection(COLLECTIONS.CATEGORIES).doc(categoryId);
+    const existing = await categoryRef.get();
+
+    if (!existing.exists || existing.data()?.deckId !== deckId) {
+      res.status(404).json({
+        error: 'Not Found',
+        message: `Category not found in deck: ${categoryId}`,
+      });
+      return;
+    }
+
+    const now = FieldValue.serverTimestamp();
+    await categoryRef.update({
+      title: payload.title,
+      description: payload.description,
+      color: payload.color,
+      updatedAt: now,
+    });
+    await db.collection(COLLECTIONS.DECKS).doc(deckId).update({ updatedAt: now });
+
+    const updated = await categoryRef.get();
+    const category = mapCategory(updated.id, updated.data()!);
+
+    res.status(200).json({ category });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: `Failed to update category: ${message}`,
     });
   }
 }

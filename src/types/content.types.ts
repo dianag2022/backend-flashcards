@@ -5,6 +5,7 @@ export interface Deck {
   title: string;
   description: string;
   emoji?: string;
+  order: number;
   status: ContentStatus;
   cardCount: number;
   updatedAt: string;
@@ -15,8 +16,10 @@ export interface Category {
   deckId: string;
   title: string;
   description: string;
+  color?: string;
   status: ContentStatus;
   cardCount: number;
+  createdAt?: string;
   updatedAt: string;
 }
 
@@ -45,6 +48,17 @@ export interface UpdateDeckBody {
 export interface CreateCategoryBody {
   title: string;
   description: string;
+  color: string;
+}
+
+export interface UpdateCategoryBody {
+  title: string;
+  description: string;
+  color: string;
+}
+
+export interface ReorderDecksBody {
+  orderedIds: string[];
 }
 
 export interface CreateFlashcardBody {

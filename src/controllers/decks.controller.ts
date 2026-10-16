@@ -7,7 +7,7 @@ import {
 } from '../controllers/categories.controller';
 import { COLLECTIONS } from '../constants/collections';
 import { FIRESTORE_BATCH_LIMIT } from '../constants/firestore';
-import { CreateDeckBody, Deck, UpdateDeckBody } from '../types/content.types';
+import { CreateDeckBody, Deck, ReorderDecksBody, UpdateDeckBody } from '../types/content.types';
 import { toIsoString } from '../utils/firestore';
 
 const DECK_EMOJI_MAX_CODE_POINTS = 16;
@@ -22,10 +22,19 @@ function mapDeck(id: string, data: FirebaseFirestore.DocumentData): Deck {
     title: data.title,
     description: data.description,
     ...(emoji ? { emoji } : {}),
+    order: typeof data.order === 'number' ? data.order : Number.MAX_SAFE_INTEGER,
     status: data.status,
     cardCount: data.cardCount ?? 0,
     updatedAt: toIsoString(data.updatedAt),
   };
+}
+
+function compareDecksByOrder(a: Deck, b: Deck): number {
+  if (a.order !== b.order) {
+    return a.order - b.order;
+  }
+
+  return a.id.localeCompare(b.id);
 }
 
 function parseEmoji(value: unknown): string | null {
@@ -80,6 +89,47 @@ function parseUpdateDeckBody(body: unknown): UpdateDeckBody | null {
   return parseDeckBody(body);
 }
 
+function parseReorderDecksBody(body: unknown): ReorderDecksBody | null {
+  if (!body || typeof body !== 'object') {
+    return null;
+  }
+
+  const { orderedIds } = body as Record<string, unknown>;
+
+  if (!Array.isArray(orderedIds) || orderedIds.length === 0) {
+    return null;
+  }
+
+  const ids = orderedIds.filter(
+    (id): id is string => typeof id === 'string' && id.trim().length > 0
+  );
+
+  if (ids.length !== orderedIds.length) {
+    return null;
+  }
+
+  const trimmed = ids.map((id) => id.trim());
+  if (new Set(trimmed).size !== trimmed.length) {
+    return null;
+  }
+
+  return { orderedIds: trimmed };
+}
+
+async function nextDeckOrder(): Promise<number> {
+  const snapshot = await db.collection(COLLECTIONS.DECKS).get();
+  let maxOrder = -1;
+
+  snapshot.docs.forEach((doc) => {
+    const order = doc.data().order;
+    if (typeof order === 'number' && order > maxOrder) {
+      maxOrder = order;
+    }
+  });
+
+  return maxOrder + 1;
+}
+
 export async function listPublishedDecks(_req: Request, res: Response): Promise<void> {
   try {
     const snapshot = await db
@@ -87,7 +137,9 @@ export async function listPublishedDecks(_req: Request, res: Response): Promise<
       .where('status', '==', 'published')
       .get();
 
-    const decks = snapshot.docs.map((doc) => mapDeck(doc.id, doc.data()));
+    const decks = snapshot.docs
+      .map((doc) => mapDeck(doc.id, doc.data()))
+      .sort(compareDecksByOrder);
 
     res.status(200).json({ decks });
   } catch (error) {
@@ -122,7 +174,9 @@ export async function listAdminDecks(req: Request, res: Response): Promise<void>
     }
 
     const snapshot = await query.get();
-    const decks = snapshot.docs.map((doc) => mapDeck(doc.id, doc.data()));
+    const decks = snapshot.docs
+      .map((doc) => mapDeck(doc.id, doc.data()))
+      .sort(compareDecksByOrder);
 
     res.status(200).json({ decks });
   } catch (error) {
@@ -147,10 +201,12 @@ export async function createDeck(req: Request, res: Response): Promise<void> {
 
   try {
     const now = FieldValue.serverTimestamp();
+    const order = await nextDeckOrder();
     const docRef = await db.collection(COLLECTIONS.DECKS).add({
       title: payload.title,
       description: payload.description,
       emoji: payload.emoji,
+      order,
       status: 'draft',
       cardCount: 0,
       updatedAt: now,
@@ -165,6 +221,61 @@ export async function createDeck(req: Request, res: Response): Promise<void> {
     res.status(500).json({
       error: 'Internal Server Error',
       message: `Failed to create deck: ${message}`,
+    });
+  }
+}
+
+export async function reorderDecks(req: Request, res: Response): Promise<void> {
+  const payload = parseReorderDecksBody(req.body);
+
+  if (!payload) {
+    res.status(400).json({
+      error: 'Bad Request',
+      message: 'orderedIds (non-empty array of unique strings) is required',
+    });
+    return;
+  }
+
+  try {
+    const deckRefs = payload.orderedIds.map((id) => db.collection(COLLECTIONS.DECKS).doc(id));
+    const snapshots = await db.getAll(...deckRefs);
+    const missingIds = payload.orderedIds.filter((_id, index) => !snapshots[index].exists);
+
+    if (missingIds.length > 0) {
+      res.status(404).json({
+        error: 'Not Found',
+        message: `Decks not found: ${missingIds.join(', ')}`,
+      });
+      return;
+    }
+
+    const now = FieldValue.serverTimestamp();
+
+    for (let i = 0; i < snapshots.length; i += FIRESTORE_BATCH_LIMIT) {
+      const chunk = snapshots.slice(i, i + FIRESTORE_BATCH_LIMIT);
+      const batch = db.batch();
+
+      chunk.forEach((doc, chunkIndex) => {
+        batch.update(doc.ref, {
+          order: i + chunkIndex,
+          updatedAt: now,
+        });
+      });
+
+      await batch.commit();
+    }
+
+    const updated = await db.getAll(...deckRefs);
+    const decks = updated
+      .map((doc) => mapDeck(doc.id, doc.data()!))
+      .sort(compareDecksByOrder);
+
+    res.status(200).json({ decks });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: `Failed to reorder decks: ${message}`,
     });
   }
 }
