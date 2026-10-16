@@ -45,6 +45,12 @@ function mapFlashcard(id: string, data: FirebaseFirestore.DocumentData): Flashca
     categoryId: data.categoryId,
     front: data.front,
     back: data.back,
+    frontImageUrl: typeof data.frontImageUrl === 'string' && data.frontImageUrl.trim()
+      ? data.frontImageUrl.trim()
+      : null,
+    backImageUrl: typeof data.backImageUrl === 'string' && data.backImageUrl.trim()
+      ? data.backImageUrl.trim()
+      : null,
     status: data.status,
     createdAt: toIsoString(data.createdAt),
   };

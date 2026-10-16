@@ -12,6 +12,10 @@ import {
 import { getCategoryOrRespond, getDeckOrRespond } from '../utils/deckHelpers';
 import { toIsoString } from '../utils/firestore';
 
+function mapImageUrl(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
 function mapFlashcard(id: string, data: FirebaseFirestore.DocumentData): Flashcard {
   return {
     id,
@@ -19,9 +23,43 @@ function mapFlashcard(id: string, data: FirebaseFirestore.DocumentData): Flashca
     categoryId: data.categoryId,
     front: data.front,
     back: data.back,
+    frontImageUrl: mapImageUrl(data.frontImageUrl),
+    backImageUrl: mapImageUrl(data.backImageUrl),
     status: data.status,
     createdAt: toIsoString(data.createdAt),
   };
+}
+
+function parseOptionalImageUrl(
+  value: unknown
+): { ok: true; value?: string | null } | { ok: false } {
+  if (value === undefined) {
+    return { ok: true };
+  }
+
+  if (value === null) {
+    return { ok: true, value: null };
+  }
+
+  if (typeof value !== 'string') {
+    return { ok: false };
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return { ok: true, value: null };
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return { ok: false };
+    }
+  } catch {
+    return { ok: false };
+  }
+
+  return { ok: true, value: trimmed };
 }
 
 function parseCreateFlashcardBody(body: unknown): CreateFlashcardBody | null {
@@ -29,7 +67,10 @@ function parseCreateFlashcardBody(body: unknown): CreateFlashcardBody | null {
     return null;
   }
 
-  const { deckId, categoryId, front, back } = body as Record<string, unknown>;
+  const { deckId, categoryId, front, back, frontImageUrl, backImageUrl } = body as Record<
+    string,
+    unknown
+  >;
 
   if (typeof deckId !== 'string' || !deckId.trim()) {
     return null;
@@ -47,11 +88,19 @@ function parseCreateFlashcardBody(body: unknown): CreateFlashcardBody | null {
     return null;
   }
 
+  const frontImage = parseOptionalImageUrl(frontImageUrl);
+  const backImage = parseOptionalImageUrl(backImageUrl);
+  if (!frontImage.ok || !backImage.ok) {
+    return null;
+  }
+
   return {
     deckId: deckId.trim(),
     categoryId: categoryId.trim(),
     front: front.trim(),
     back: back.trim(),
+    frontImageUrl: frontImage.value ?? null,
+    backImageUrl: backImage.value ?? null,
   };
 }
 
@@ -60,7 +109,7 @@ function parseUpdateFlashcardBody(body: unknown): UpdateFlashcardBody | null {
     return null;
   }
 
-  const { front, back } = body as Record<string, unknown>;
+  const { front, back, frontImageUrl, backImageUrl } = body as Record<string, unknown>;
 
   if (typeof front !== 'string' || !front.trim()) {
     return null;
@@ -70,9 +119,17 @@ function parseUpdateFlashcardBody(body: unknown): UpdateFlashcardBody | null {
     return null;
   }
 
+  const frontImage = parseOptionalImageUrl(frontImageUrl);
+  const backImage = parseOptionalImageUrl(backImageUrl);
+  if (!frontImage.ok || !backImage.ok) {
+    return null;
+  }
+
   return {
     front: front.trim(),
     back: back.trim(),
+    ...(frontImage.value !== undefined ? { frontImageUrl: frontImage.value } : {}),
+    ...(backImage.value !== undefined ? { backImageUrl: backImage.value } : {}),
   };
 }
 
@@ -383,6 +440,8 @@ export async function createFlashcard(req: Request, res: Response): Promise<void
         categoryId: payload.categoryId,
         front: payload.front,
         back: payload.back,
+        frontImageUrl: payload.frontImageUrl ?? null,
+        backImageUrl: payload.backImageUrl ?? null,
         status: 'draft',
         createdAt: now,
       });
@@ -442,6 +501,8 @@ export async function updateFlashcard(req: Request, res: Response): Promise<void
     await flashcardRef.update({
       front: payload.front,
       back: payload.back,
+      ...(payload.frontImageUrl !== undefined ? { frontImageUrl: payload.frontImageUrl } : {}),
+      ...(payload.backImageUrl !== undefined ? { backImageUrl: payload.backImageUrl } : {}),
     });
 
     if (typeof deckId === 'string' && deckId.trim()) {

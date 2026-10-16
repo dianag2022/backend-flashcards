@@ -54,6 +54,7 @@ Use \`POST /api/auth/sign-out\` with a Bearer token to revoke refresh tokens ser
     { name: 'Auth', description: 'Firebase authentication — sign in and sign out' },
     { name: 'Public', description: 'Read-only endpoints for mobile / public clients' },
     { name: 'Study', description: 'Adaptive study progress — requires a signed-in user' },
+    { name: 'Glossary', description: 'Glossary terms for mobile and admin' },
     { name: 'Admin', description: 'Write operations — requires admin role' },
   ],
   components: {
@@ -124,12 +125,22 @@ Use \`POST /api/auth/sign-out\` with a Bearer token to revoke refresh tokens ser
           id: { type: 'string', example: 'card456' },
           deckId: { type: 'string', example: 'abc123' },
           categoryId: { type: 'string', example: 'cat789' },
-          front: { type: 'string', example: 'What is working memory?' },
-          back: { type: 'string', example: 'A limited-capacity system for temporary information storage.' },
+          front: {
+            type: 'string',
+            example: '<p>What is working memory?</p>',
+            description: 'Card front. HTML is allowed.',
+          },
+          back: {
+            type: 'string',
+            example: '<p>A limited-capacity system for temporary information storage.</p>',
+            description: 'Card back. HTML is allowed.',
+          },
+          frontImageUrl: { type: 'string', nullable: true, example: 'https://firebasestorage.googleapis.com/...' },
+          backImageUrl: { type: 'string', nullable: true, example: null },
           status: { $ref: '#/components/schemas/ContentStatus' },
           createdAt: { type: 'string', format: 'date-time' },
         },
-        required: ['id', 'deckId', 'categoryId', 'front', 'back', 'status', 'createdAt'],
+        required: ['id', 'deckId', 'categoryId', 'front', 'back', 'frontImageUrl', 'backImageUrl', 'status', 'createdAt'],
       },
       CreateDeckBody: {
         type: 'object',
@@ -183,18 +194,79 @@ Use \`POST /api/auth/sign-out\` with a Bearer token to revoke refresh tokens ser
         properties: {
           deckId: { type: 'string', example: 'abc123' },
           categoryId: { type: 'string', example: 'cat789' },
-          front: { type: 'string', example: 'What is working memory?' },
-          back: { type: 'string', example: 'A limited-capacity system for temporary information storage.' },
+          front: { type: 'string', example: '<p>What is working memory?</p>' },
+          back: { type: 'string', example: '<p>A limited-capacity system for temporary information storage.</p>' },
+          frontImageUrl: { type: 'string', nullable: true, example: 'https://firebasestorage.googleapis.com/...' },
+          backImageUrl: { type: 'string', nullable: true, example: null },
         },
         required: ['deckId', 'categoryId', 'front', 'back'],
       },
       UpdateFlashcardBody: {
         type: 'object',
         properties: {
-          front: { type: 'string', example: 'What is working memory?' },
-          back: { type: 'string', example: 'A limited-capacity system for temporary information storage.' },
+          front: { type: 'string', example: '<p>What is working memory?</p>' },
+          back: { type: 'string', example: '<p>A limited-capacity system for temporary information storage.</p>' },
+          frontImageUrl: { type: 'string', nullable: true, example: 'https://firebasestorage.googleapis.com/...' },
+          backImageUrl: { type: 'string', nullable: true, example: null },
         },
         required: ['front', 'back'],
+      },
+      GlossaryTerm: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', example: 'term123' },
+          term: { type: 'string', example: 'Working memory' },
+          definition: { type: 'string', example: 'A limited-capacity system for temporary information storage.' },
+          updatedAt: { type: 'string', format: 'date-time' },
+        },
+        required: ['id', 'term', 'definition', 'updatedAt'],
+      },
+      GlossaryTermBody: {
+        type: 'object',
+        properties: {
+          term: { type: 'string', example: 'Working memory' },
+          definition: { type: 'string', example: 'A limited-capacity system for temporary information storage.' },
+        },
+        required: ['term', 'definition'],
+      },
+      GlossaryListResponse: {
+        type: 'object',
+        properties: {
+          terms: {
+            type: 'array',
+            items: { $ref: '#/components/schemas/GlossaryTerm' },
+          },
+        },
+      },
+      GlossaryTermResponse: {
+        type: 'object',
+        properties: {
+          term: { $ref: '#/components/schemas/GlossaryTerm' },
+        },
+      },
+      UploadResponse: {
+        type: 'object',
+        properties: {
+          url: { type: 'string', example: 'https://firebasestorage.googleapis.com/v0/b/flashcard-c6f25.appspot.com/o/uploads%2Ffile.jpg?alt=media&token=...' },
+        },
+        required: ['url'],
+      },
+      SendNotificationBody: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', example: 'Nuevo deck' },
+          body: { type: 'string', example: 'Hay contenido nuevo para estudiar.' },
+          audience: { type: 'string', enum: ['all'], example: 'all' },
+        },
+        required: ['title', 'body', 'audience'],
+      },
+      SendNotificationResponse: {
+        type: 'object',
+        properties: {
+          message: { type: 'string', example: 'Sent' },
+          sentCount: { type: 'integer', example: 120 },
+        },
+        required: ['message', 'sentCount'],
       },
       UpdateCategoriesStatusBody: {
         type: 'object',
@@ -788,6 +860,24 @@ Use \`POST /api/auth/sign-out\` with a Bearer token to revoke refresh tokens ser
         },
       },
     },
+    '/api/glossary': {
+      get: {
+        tags: ['Glossary', 'Public'],
+        summary: 'List glossary terms',
+        description: 'Returns all glossary terms, sorted by term. Public / mobile.',
+        responses: {
+          '200': {
+            description: 'Glossary terms',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/GlossaryListResponse' },
+              },
+            },
+          },
+          '500': { description: 'Server error' },
+        },
+      },
+    },
     '/api/decks': {
       get: {
         tags: ['Public'],
@@ -1047,6 +1137,161 @@ Use \`POST /api/auth/sign-out\` with a Bearer token to revoke refresh tokens ser
           '401': { description: 'Unauthorized' },
           '404': { description: 'Deck or category not found' },
           '500': { description: 'Server error' },
+        },
+      },
+    },
+    '/api/admin/uploads': {
+      post: {
+        tags: ['Admin'],
+        summary: 'Upload an image',
+        description:
+          'Uploads a jpg, png, or webp file (max 4 MB) to Firebase Storage and returns a public URL. Requires `role: admin`. Field name must be `file`.',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'multipart/form-data': {
+              schema: {
+                type: 'object',
+                properties: {
+                  file: { type: 'string', format: 'binary' },
+                },
+                required: ['file'],
+              },
+            },
+          },
+        },
+        responses: {
+          '201': {
+            description: 'File uploaded',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/UploadResponse' },
+              },
+            },
+          },
+          '400': { description: 'Missing file or invalid type/size' },
+          '401': { description: 'Unauthorized' },
+          '403': { description: 'Forbidden' },
+          '500': { description: 'Server error' },
+        },
+      },
+    },
+    '/api/admin/notifications': {
+      post: {
+        tags: ['Admin'],
+        summary: 'Send a push notification',
+        description:
+          'Sends an FCM notification to all tokens stored on `users/{uid}.fcmTokens[]`. Requires `role: admin`.',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/SendNotificationBody' },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: 'Notification sent',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/SendNotificationResponse' },
+              },
+            },
+          },
+          '400': { description: 'Invalid body' },
+          '401': { description: 'Unauthorized' },
+          '403': { description: 'Forbidden' },
+          '500': { description: 'Server error' },
+        },
+      },
+    },
+    '/api/admin/glossary': {
+      get: {
+        tags: ['Glossary', 'Admin'],
+        summary: 'List glossary terms (admin)',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': {
+            description: 'Glossary terms',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/GlossaryListResponse' },
+              },
+            },
+          },
+          '401': { description: 'Unauthorized' },
+          '403': { description: 'Forbidden' },
+        },
+      },
+      post: {
+        tags: ['Glossary', 'Admin'],
+        summary: 'Create a glossary term',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/GlossaryTermBody' },
+            },
+          },
+        },
+        responses: {
+          '201': {
+            description: 'Term created',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/GlossaryTermResponse' },
+              },
+            },
+          },
+          '400': { description: 'Invalid body' },
+          '401': { description: 'Unauthorized' },
+          '403': { description: 'Forbidden' },
+        },
+      },
+    },
+    '/api/admin/glossary/{id}': {
+      put: {
+        tags: ['Glossary', 'Admin'],
+        summary: 'Update a glossary term',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/GlossaryTermBody' },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: 'Term updated',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/GlossaryTermResponse' },
+              },
+            },
+          },
+          '400': { description: 'Invalid body' },
+          '401': { description: 'Unauthorized' },
+          '403': { description: 'Forbidden' },
+          '404': { description: 'Term not found' },
+        },
+      },
+      delete: {
+        tags: ['Glossary', 'Admin'],
+        summary: 'Delete a glossary term',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          '200': { description: 'Term deleted' },
+          '401': { description: 'Unauthorized' },
+          '403': { description: 'Forbidden' },
+          '404': { description: 'Term not found' },
         },
       },
     },
@@ -1380,7 +1625,7 @@ Use \`POST /api/auth/sign-out\` with a Bearer token to revoke refresh tokens ser
         tags: ['Admin'],
         summary: 'Create a flashcard',
         description:
-          'Creates a draft flashcard in a category. Requires `deckId` and `categoryId`. Increments deck and category `cardCount`.',
+          'Creates a draft flashcard in a category. `front` and `back` may contain HTML. Optional `frontImageUrl` / `backImageUrl`. Increments deck and category `cardCount`.',
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,

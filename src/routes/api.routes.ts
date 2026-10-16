@@ -12,6 +12,15 @@ import {
 } from '../controllers/categories.controller';
 import { createDeck, deleteDeck, draftDeck, listAdminDecks, listPublishedDecks, publishDeck, reorderDecks, updateDeck } from '../controllers/decks.controller';
 import {
+  createGlossaryTerm,
+  deleteGlossaryTerm,
+  listAdminGlossary,
+  listPublishedGlossary,
+  updateGlossaryTerm,
+} from '../controllers/glossary.controller';
+import { sendAdminNotification } from '../controllers/notifications.controller';
+import { uploadAdminFile } from '../controllers/uploads.controller';
+import {
   createFlashcard,
   deleteFlashcard,
   updateFlashcard,
@@ -32,9 +41,11 @@ import {
   resetProgressByDeck,
 } from '../controllers/progress.controller';
 import { checkAuth } from '../middlewares/authMiddleware';
+import { uploadSingleImage } from '../middlewares/uploadMiddleware';
 
 const router = Router();
 
+router.get('/glossary', listPublishedGlossary);
 router.get('/decks', listPublishedDecks);
 router.get('/decks/:deckId/categories', listPublishedCategoriesByDeck);
 router.get('/decks/:deckId/categories/:categoryId/flashcards', listPublishedFlashcardsByCategory);
@@ -53,6 +64,13 @@ router.delete(
   resetProgressByCategory
 );
 router.delete('/progress/decks/:deckId', checkAuth(), resetProgressByDeck);
+
+router.post('/admin/uploads', checkAuth('admin'), uploadSingleImage(), uploadAdminFile);
+router.post('/admin/notifications', checkAuth('admin'), sendAdminNotification);
+router.get('/admin/glossary', checkAuth('admin'), listAdminGlossary);
+router.post('/admin/glossary', checkAuth('admin'), createGlossaryTerm);
+router.put('/admin/glossary/:id', checkAuth('admin'), updateGlossaryTerm);
+router.delete('/admin/glossary/:id', checkAuth('admin'), deleteGlossaryTerm);
 
 router.post('/admin/decks', checkAuth('admin'), createDeck);
 router.get('/admin/decks', checkAuth('admin'), listAdminDecks);

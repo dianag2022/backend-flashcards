@@ -29,6 +29,8 @@ export interface Flashcard {
   categoryId: string;
   front: string;
   back: string;
+  frontImageUrl: string | null;
+  backImageUrl: string | null;
   status: ContentStatus;
   createdAt: string;
 }
@@ -66,11 +68,15 @@ export interface CreateFlashcardBody {
   categoryId: string;
   front: string;
   back: string;
+  frontImageUrl?: string | null;
+  backImageUrl?: string | null;
 }
 
 export interface UpdateFlashcardBody {
   front: string;
   back: string;
+  frontImageUrl?: string | null;
+  backImageUrl?: string | null;
 }
 
 export interface UpdateFlashcardsStatusBody {

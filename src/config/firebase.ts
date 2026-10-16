@@ -4,6 +4,8 @@ import path from 'path';
 import { AppOptions, ServiceAccount, cert, getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
+import { getMessaging } from 'firebase-admin/messaging';
+import { getStorage } from 'firebase-admin/storage';
 
 const REQUIRED_SERVICE_ACCOUNT_FIELDS = [
   'type',
@@ -85,8 +87,16 @@ function initializeFirebase(): void {
   const serviceAccountPath = resolveServiceAccountPath();
   const serviceAccount = loadServiceAccount(serviceAccountPath);
 
+  const projectId = String((serviceAccount as ServiceAccount & { projectId?: string }).projectId
+    ?? (serviceAccount as { project_id?: string }).project_id
+    ?? '');
+  const storageBucket =
+    process.env.FIREBASE_STORAGE_BUCKET?.trim() ||
+    (projectId ? `${projectId}.appspot.com` : undefined);
+
   const appOptions: AppOptions = {
     credential: cert(serviceAccount),
+    ...(storageBucket ? { storageBucket } : {}),
   };
 
   const databaseUrl = process.env.FIREBASE_DATABASE_URL?.trim();
@@ -112,3 +122,5 @@ try {
 
 export const db = getFirestore();
 export const auth = getAuth();
+export const storage = getStorage();
+export const messaging = getMessaging();
