@@ -1,7 +1,9 @@
 import { Request, Response } from 'express';
+import { FieldValue } from 'firebase-admin/firestore';
 import { db, messaging } from '../config/firebase';
 import { COLLECTIONS } from '../constants/collections';
-import { SendNotificationBody } from '../types/notification.types';
+import { Notification, SendNotificationBody } from '../types/notification.types';
+import { toIsoString, toMillis } from '../utils/firestore';
 
 const FCM_MULTICAST_LIMIT = 500;
 
@@ -52,6 +54,30 @@ function collectTokens(value: unknown): string[] {
     .filter((token) => token.length > 0);
 }
 
+function mapNotification(id: string, data: FirebaseFirestore.DocumentData): Notification {
+  return {
+    id,
+    title: data.title,
+    body: data.body,
+    audience: 'all',
+    sentCount: typeof data.sentCount === 'number' ? data.sentCount : 0,
+    createdAt: toIsoString(data.createdAt),
+  };
+}
+
+async function persistNotification(
+  payload: SendNotificationBody,
+  sentCount: number
+): Promise<void> {
+  await db.collection(COLLECTIONS.NOTIFICATIONS).add({
+    title: payload.title,
+    body: payload.body,
+    audience: payload.audience,
+    sentCount,
+    createdAt: FieldValue.serverTimestamp(),
+  });
+}
+
 async function loadAllFcmTokens(): Promise<string[]> {
   const snapshot = await db.collection(COLLECTIONS.USERS).get();
   const tokens = new Set<string>();
@@ -76,15 +102,6 @@ export async function sendAdminNotification(req: Request, res: Response): Promis
 
   try {
     const tokens = await loadAllFcmTokens();
-
-    if (tokens.length === 0) {
-      res.status(200).json({
-        message: 'Sent',
-        sentCount: 0,
-      });
-      return;
-    }
-
     let sentCount = 0;
 
     for (let i = 0; i < tokens.length; i += FCM_MULTICAST_LIMIT) {
@@ -100,6 +117,8 @@ export async function sendAdminNotification(req: Request, res: Response): Promis
       sentCount += result.successCount;
     }
 
+    await persistNotification(payload, sentCount);
+
     res.status(200).json({
       message: 'Sent',
       sentCount,
@@ -109,6 +128,24 @@ export async function sendAdminNotification(req: Request, res: Response): Promis
     res.status(500).json({
       error: 'Internal Server Error',
       message: `Failed to send notification: ${message}`,
+    });
+  }
+}
+
+export async function listNotifications(_req: Request, res: Response): Promise<void> {
+  try {
+    const snapshot = await db.collection(COLLECTIONS.NOTIFICATIONS).get();
+    const notifications = snapshot.docs
+      .slice()
+      .sort((a, b) => (toMillis(b.data().createdAt) ?? 0) - (toMillis(a.data().createdAt) ?? 0))
+      .map((doc) => mapNotification(doc.id, doc.data()));
+
+    res.status(200).json({ notifications });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: `Failed to fetch notifications: ${message}`,
     });
   }
 }

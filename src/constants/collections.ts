@@ -5,6 +5,7 @@ export const COLLECTIONS = {
   USER_CARD_PROGRESS: 'user_card_progress',
   GLOSSARY: 'glossary',
   USERS: 'users',
+  NOTIFICATIONS: 'notifications',
 } as const;
 
 export const SUBCOLLECTIONS = {

@@ -18,7 +18,7 @@ import {
   listPublishedGlossary,
   updateGlossaryTerm,
 } from '../controllers/glossary.controller';
-import { sendAdminNotification } from '../controllers/notifications.controller';
+import { listNotifications, sendAdminNotification } from '../controllers/notifications.controller';
 import { uploadAdminFile } from '../controllers/uploads.controller';
 import {
   createFlashcard,
@@ -45,6 +45,7 @@ import { uploadSingleImage } from '../middlewares/uploadMiddleware';
 
 const router = Router();
 
+router.get('/notifications', listNotifications);
 router.get('/glossary', listPublishedGlossary);
 router.get('/decks', listPublishedDecks);
 router.get('/decks/:deckId/categories', listPublishedCategoriesByDeck);
@@ -66,6 +67,7 @@ router.delete(
 router.delete('/progress/decks/:deckId', checkAuth(), resetProgressByDeck);
 
 router.post('/admin/uploads', checkAuth('admin'), uploadSingleImage(), uploadAdminFile);
+router.get('/admin/notifications', checkAuth('admin'), listNotifications);
 router.post('/admin/notifications', checkAuth('admin'), sendAdminNotification);
 router.get('/admin/glossary', checkAuth('admin'), listAdminGlossary);
 router.post('/admin/glossary', checkAuth('admin'), createGlossaryTerm);

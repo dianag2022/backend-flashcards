@@ -268,6 +268,27 @@ Use \`POST /api/auth/sign-out\` with a Bearer token to revoke refresh tokens ser
         },
         required: ['message', 'sentCount'],
       },
+      Notification: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', example: 'notif123' },
+          title: { type: 'string', example: 'Nuevo deck' },
+          body: { type: 'string', example: 'Hay contenido nuevo para estudiar.' },
+          audience: { type: 'string', enum: ['all'], example: 'all' },
+          sentCount: { type: 'integer', example: 120 },
+          createdAt: { type: 'string', format: 'date-time' },
+        },
+        required: ['id', 'title', 'body', 'audience', 'sentCount', 'createdAt'],
+      },
+      NotificationListResponse: {
+        type: 'object',
+        properties: {
+          notifications: {
+            type: 'array',
+            items: { $ref: '#/components/schemas/Notification' },
+          },
+        },
+      },
       UpdateCategoriesStatusBody: {
         type: 'object',
         properties: {
@@ -860,6 +881,24 @@ Use \`POST /api/auth/sign-out\` with a Bearer token to revoke refresh tokens ser
         },
       },
     },
+    '/api/notifications': {
+      get: {
+        tags: ['Public'],
+        summary: 'List notifications',
+        description: 'Returns sent notifications, newest first. For mobile in-app history.',
+        responses: {
+          '200': {
+            description: 'Notifications',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/NotificationListResponse' },
+              },
+            },
+          },
+          '500': { description: 'Server error' },
+        },
+      },
+    },
     '/api/glossary': {
       get: {
         tags: ['Glossary', 'Public'],
@@ -1178,6 +1217,25 @@ Use \`POST /api/auth/sign-out\` with a Bearer token to revoke refresh tokens ser
       },
     },
     '/api/admin/notifications': {
+      get: {
+        tags: ['Admin'],
+        summary: 'List sent notifications',
+        description: 'Returns notification history, newest first. Requires `role: admin`.',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': {
+            description: 'Notifications',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/NotificationListResponse' },
+              },
+            },
+          },
+          '401': { description: 'Unauthorized' },
+          '403': { description: 'Forbidden' },
+          '500': { description: 'Server error' },
+        },
+      },
       post: {
         tags: ['Admin'],
         summary: 'Send a push notification',
